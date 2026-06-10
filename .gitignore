@@ -74,3 +74,10 @@ node_modules/
 
 # Plugins (vendored, usually not committed)
 # plugins/
+
+# Environment / secrets — NEVER commit real .env files
+.env
+.env.local
+.env.production
+supabase/.env
+supabase/functions/**/.env

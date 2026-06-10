@@ -3,9 +3,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { MongoClient } from "npm:mongodb";
 
-const AGORA_APP_ID = "2d9c22945103407da35ff652bf8c9a2d";
-const AGORA_APP_CERTIFICATE = "d2a3eb82c9a54e5d8f990246b5a4722b";
-const MONGO_URI = "mongodb+srv://Muwanguzi:K7kkpea8VOKJhabr@necxalive.b417dk3.mongodb.net/necxalive?appName=necxalive";
+const AGORA_APP_ID = Deno.env.get("AGORA_APP_ID") ?? "";
+const AGORA_APP_CERTIFICATE = Deno.env.get("AGORA_APP_CERTIFICATE") ?? "";
+const MONGO_URI = Deno.env.get("MONGO_URI") ?? "";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

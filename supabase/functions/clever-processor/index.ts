@@ -25,8 +25,8 @@ const supabase = createClient(
 )
 
 // 🚀 UPSTASH REDIS: Hyper-Performance Feed Layer
-const REDIS_URL = Deno.env.get("UPSTASH_REDIS_REST_URL") ?? "https://careful-weevil-95137.upstash.io";
-const REDIS_TOKEN = Deno.env.get("UPSTASH_REDIS_REST_TOKEN") ?? "gQAAAAAAAXOhAAIgcDFiOTRkNmNlODkyNTE0YzQ4OTNhZGQ1NmU2ODhlMWRkZA";
+const REDIS_URL = Deno.env.get("UPSTASH_REDIS_REST_URL") ?? "";
+const REDIS_TOKEN = Deno.env.get("UPSTASH_REDIS_REST_TOKEN") ?? "";
 
 async function getRedis() {
   try {
