@@ -1,0 +1,2474 @@
+import 'dart:io';
+import 'dart:ui';
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:ffmpeg_kit_flutter_min_gpl/ffprobe_kit.dart';
+import 'package:video_player/video_player.dart';
+import '../services/video_enhancement_service.dart';
+import '../services/image_enhancement_service.dart';
+import '../models/music_models.dart';
+import '../screens/music_library_screen.dart';
+import '../services/music_library_service.dart';
+import '../theme.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import '../app_state.dart';
+import 'campaign_ui_kit.dart';
+import 'package:record/record.dart';
+enum ImageFilter { warm, cool, blackAndWhite }
+
+class VideoClip {
+  final File file;
+  File? proxyFile; // Lightweight version for editing
+  bool isProxyReady = false;
+  
+  double start;    // seconds
+  double end;      // seconds
+  double duration; // total source duration
+  double speed;
+  double volume;
+  bool hasAudio;
+
+  VideoClip({
+    required this.file,
+    this.proxyFile,
+    this.isProxyReady = false,
+    this.start = 0,
+    this.end = 0.1, 
+    this.duration = 0,
+    this.speed = 1.0,
+    this.volume = 1.0,
+    this.hasAudio = true,
+  });
+
+  VideoClip copy() => VideoClip(
+    file: file,
+    proxyFile: proxyFile,
+    isProxyReady: isProxyReady,
+    start: start,
+    end: end,
+    duration: duration,
+    speed: speed,
+    volume: volume,
+    hasAudio: hasAudio,
+  );
+
+  bool get isVideo => file.path.toLowerCase().endsWith('.mp4') || file.path.toLowerCase().endsWith('.mov');
+}
+
+class MediaEditorScreen extends StatefulWidget {
+  final File? initialImage;
+  final File? initialVideo;
+  final MusicTrack? initialTrack;
+  final List<File>? multiFiles;
+  final bool isFastSync;
+  final AppState state;
+
+  const MediaEditorScreen({
+    super.key, 
+    this.initialImage, 
+    this.initialVideo,
+    this.initialTrack,
+    this.multiFiles,
+    this.isFastSync = false,
+    required this.state,
+  });
+
+  @override
+  State<MediaEditorScreen> createState() => _MediaEditorScreenState();
+}
+
+class _MediaEditorScreenState extends State<MediaEditorScreen> {
+final ImageEnhancementService _enhancementService = ImageEnhancementService();
+  final VideoEnhancementService _videoService = VideoEnhancementService();
+  
+  VideoPlayerController? _videoController;
+  
+  // Real-time Editing State
+  ImageFilter? _selectedFilter;
+  double _beautyLevel = 0.5;
+  bool _isEnhancementEnabled = false;
+  bool _isProcessing = false;
+  String _activeSound = "Add Sound";
+  MusicTrack? _selectedTrack;
+  final AudioPlayer _musicPlayer = AudioPlayer();
+  final AudioPlayer _voicePlayer = AudioPlayer();
+  final MusicLibraryService _musicService = MusicLibraryService();
+
+  // Shader State
+  FragmentProgram? _shaderProgram;
+  double _brightness = 0.0;
+  double _contrast = 1.0;
+  double _saturation = 1.0;
+  double _hue = 0.0;
+  
+  // Advanced Tools State
+  // Audio Mixer State
+  double _bgmVolume = 0.5;
+  double _voiceVolume = 0.8;
+  double _originalVolume = 1.0;
+  bool _isMuted = false;
+  bool _isPlaying = false;
+  String _selectedAspectRatio = '9:16';
+  
+  // Tab Navigation
+  int _activeCategoryIndex = 0; // 0: Edit, 1: Audio, 2: Filters, 3: Effects, 4: Text
+  
+  // Voice Over State
+  bool _isRecordingVoice = false;
+  File? _voiceOverFile;
+  final AudioRecorder _voiceRecorder = AudioRecorder();
+
+  // Mask Mode
+  bool _isMaskMode = false;
+
+  // Multi-track Sequencer State
+  late List<VideoClip> _sequence;
+  int _activeClipIndex = 0;
+  
+  // Professional Metadata
+  final Map<int, String> _transitions = {};
+  
+  // Overlay & Metadata State
+  final List<Map<String, dynamic>> _overlays = []; 
+  final Map<int, double> _startOffsets = {};
+  final Map<int, double> _endOffsets = {};
+
+  // Track selection for focused editing
+  String? _selectedTrackId; // 'video', 'music', 'voice', or 'text'
+  int _activeNavIndex = 0; // 0: Timeline, 1: Audio, 2: Text, 3: Trans, 4: Settings
+
+  // Undo/Redo Engine
+  final List<List<VideoClip>> _history = [];
+  final List<List<VideoClip>> _redoStack = [];
+
+  // Audio Timeline State
+  double _audioStart = 0;
+  double _audioEnd = 30; // 30s default
+  double _audioOffset = 0; // Where it starts in the global timeline
+
+  @override
+  void initState() {
+    super.initState();
+    final files = widget.multiFiles ?? (widget.initialVideo != null ? [widget.initialVideo!] : (widget.initialImage != null ? [widget.initialImage!] : []));
+    _sequence = files.map((f) => VideoClip(file: f)).toList();
+    
+    if (widget.initialTrack != null) {
+      _selectedTrack = widget.initialTrack;
+      _activeSound = _selectedTrack!.title;
+      _musicPlayer.setReleaseMode(ReleaseMode.loop);
+      _musicPlayer.play(UrlSource(_selectedTrack!.audioUrl));
+    }
+    
+    _loadClip(_activeClipIndex);
+    _probeDurations();
+    _loadShaders();
+
+    // Trigger proxy generation for initial clips
+    for (var clip in _sequence) {
+      if (clip.isVideo) _generateProxyForClip(clip);
+    }
+  }
+
+  Future<void> _loadShaders() async {
+    try {
+      final program = await FragmentProgram.fromAsset('assets/shaders/color_grading.frag');
+      setState(() => _shaderProgram = program);
+    } catch (e) {
+      debugPrint("Error loading shaders: $e");
+    }
+  }
+
+  double get _totalDuration {
+    return _sequence.fold(0.0, (sum, clip) => sum + (clip.end - clip.start) / clip.speed);
+  }
+
+  double _getGlobalTime(int clipIndex, double relativeTime) {
+    double total = 0;
+    for (int i = 0; i < clipIndex; i++) {
+      total += (_sequence[i].end - _sequence[i].start) / _sequence[i].speed;
+    }
+    return total + (relativeTime - _sequence[clipIndex].start) / _sequence[clipIndex].speed;
+  }
+
+  void _seekGlobal(double targetTime) async {
+    double current = 0;
+    bool found = false;
+    for (int i = 0; i < _sequence.length; i++) {
+      final clip = _sequence[i];
+      final duration = (clip.end - clip.start) / clip.speed;
+      if (targetTime <= current + duration || i == _sequence.length - 1) {
+        final relativeTime = clip.start + (targetTime - current) * clip.speed;
+        if (i != _activeClipIndex) {
+          setState(() => _activeClipIndex = i);
+          _loadClip(i, seekTo: relativeTime);
+        } else {
+          _videoController?.seekTo(Duration(milliseconds: (relativeTime * 1000).toInt()));
+        }
+        found = true;
+        break;
+      }
+      current += duration;
+    }
+
+    // Handle Audio Tracks Synchronization
+    if (_selectedTrack != null) {
+      double musicPos = (targetTime - _audioOffset).clamp(0.0, _audioEnd - _audioStart);
+      if (targetTime >= _audioOffset && targetTime < (_audioOffset + (_audioEnd - _audioStart))) {
+        await _musicPlayer.seek(Duration(milliseconds: (musicPos * 1000).toInt()));
+        if (_isPlaying) await _musicPlayer.resume();
+      } else {
+        await _musicPlayer.pause();
+      }
+    }
+
+    if (_voiceOverFile != null) {
+      await _voicePlayer.seek(Duration(milliseconds: (targetTime * 1000).toInt()));
+      if (_isPlaying) await _voicePlayer.resume();
+    }
+
+    setState(() {});
+  }
+
+  Future<void> _probeDurations() async {
+    for (var clip in _sequence) {
+      if (clip.duration == 0) {
+        if (clip.isVideo) {
+          // Use FFprobe to get accurate metadata including audio stream presence
+          try {
+            final session = await FFprobeKit.getMediaInformation(clip.file.path);
+            final info = session.getMediaInformation();
+            if (info != null) {
+              final durationStr = info.getDuration();
+              if (durationStr != null) {
+                clip.duration = double.tryParse(durationStr) ?? 0.0;
+              }
+              
+              // Check for audio streams
+              final streams = info.getStreams();
+              clip.hasAudio = streams.any((s) => s.getType() == 'audio');
+              
+              if (clip.end <= 0.1) clip.end = clip.duration;
+            }
+          } catch (e) {
+            debugPrint("Error probing with FFprobe: $e");
+            // Fallback to VideoPlayer if FFprobe fails
+            final controller = VideoPlayerController.file(clip.file);
+            try {
+              await controller.initialize();
+              clip.duration = controller.value.duration.inMilliseconds / 1000.0;
+              if (clip.end <= 0.1) clip.end = clip.duration;
+              await controller.dispose();
+            } catch (e2) {
+              clip.duration = 3.0;
+              if (clip.end <= 0.1) clip.end = 3.0;
+            }
+          }
+        } else {
+          // It's an image
+          clip.duration = 3.0;
+          clip.hasAudio = false;
+          if (clip.end <= 0.1) clip.end = 3.0;
+        }
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _loadClip(int index, {double? seekTo}) {
+    if (_sequence.isEmpty) return;
+    final clip = _sequence[index];
+
+    if (clip.isVideo) {
+      final mediaFile = clip.isProxyReady ? clip.proxyFile! : clip.file;
+      
+      if (!mediaFile.existsSync() || mediaFile.lengthSync() == 0) {
+        debugPrint('❌ MediaEditor: Clip file is empty or missing! ${mediaFile.path}');
+        _feedback("Error: Footage is empty or corrupt");
+        return;
+      }
+
+      _videoController?.dispose();
+      _videoController = VideoPlayerController.file(mediaFile)
+        ..initialize().then((_) {
+          if (clip.duration <= 0) {
+            clip.duration = _videoController!.value.duration.inMilliseconds / 1000.0;
+            clip.end = clip.duration;
+          }
+          
+          _videoController!.setVolume(_isMuted ? 0.0 : _originalVolume);
+          _videoController!.setPlaybackSpeed(clip.speed);
+          
+          final startTime = seekTo ?? clip.start;
+          _videoController!.seekTo(Duration(milliseconds: (startTime * 1000).toInt()));
+          
+          if (_isPlaying) _syncPlay();
+          if (mounted) setState(() {});
+        })
+        ..addListener(() {
+          if (_videoController == null || !_videoController!.value.isInitialized) return;
+          if (clip.end <= 0.1) return; 
+          
+          final pos = _videoController!.value.position.inMilliseconds / 1000.0;
+          if (pos >= clip.end) {
+            if (_activeClipIndex < _sequence.length - 1) {
+              setState(() => _activeClipIndex++);
+              _loadClip(_activeClipIndex);
+            } else {
+              // Loop sequence
+              setState(() => _activeClipIndex = 0);
+              _loadClip(_activeClipIndex);
+            }
+          }
+          if (mounted) setState(() {});
+        });
+    } else {
+      _videoController?.dispose();
+      _videoController = null;
+      if (mounted) setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _musicPlayer.dispose();
+    _voicePlayer.dispose();
+    _voiceRecorder.dispose();
+    _enhancementService.dispose();
+    super.dispose();
+  }
+
+  void _saveHistory() {
+    _history.add(_sequence.map((c) => c.copy()).toList());
+    _redoStack.clear();
+    if (_history.length > 20) _history.removeAt(0);
+  }
+
+  void _undo() {
+    if (_history.isEmpty) return;
+    HapticFeedback.lightImpact();
+    setState(() {
+      _redoStack.add(_sequence.map((c) => c.copy()).toList());
+      _sequence = _history.removeLast();
+      _loadClip(_activeClipIndex);
+    });
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    HapticFeedback.lightImpact();
+    setState(() {
+      _history.add(_sequence.map((c) => c.copy()).toList());
+      _sequence = _redoStack.removeLast();
+      _loadClip(_activeClipIndex);
+    });
+  }
+
+  Future<void> _addClip() async {
+    final picked = await ImagePicker().pickMultipleMedia();
+    if (picked.isNotEmpty) {
+      _saveHistory();
+      final newClips = picked.map((x) => VideoClip(file: File(x.path))).toList();
+      
+      setState(() {
+        _sequence.addAll(newClips);
+      });
+      
+      _probeDurations();
+      
+      // Start background proxy generation for video clips
+      for (var clip in newClips) {
+        if (clip.isVideo) {
+          _generateProxyForClip(clip);
+        }
+      }
+      
+      _feedback("Clips Added!");
+    }
+  }
+
+  Future<void> _generateProxyForClip(VideoClip clip) async {
+    // Don't proxy small files (e.g. < 5MB) to save time/space
+    try {
+      final size = await clip.file.length();
+      if (size < 5 * 1024 * 1024) {
+        debugPrint("Skipping proxy for small clip: ${clip.file.path}");
+        return;
+      }
+    } catch (_) {}
+
+    final proxy = await _videoService.generateProxy(clip.file);
+    if (proxy.path != clip.file.path) {
+      setState(() {
+        clip.proxyFile = proxy;
+        clip.isProxyReady = true;
+      });
+      debugPrint("Proxy Ready for clip: ${clip.file.path}");
+      
+      // If this is the active clip, reload the player to use proxy
+      if (_sequence.indexOf(clip) == _activeClipIndex) {
+        _loadClip(_activeClipIndex);
+      }
+    }
+  }
+
+  void _showAdjustSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: C.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('COLOR GRADING (GPU)', style: syne(sz: 14, w: FontWeight.w900, ls: 2)),
+              const SizedBox(height: 24),
+              _adjustSlider('Brightness', _brightness, -0.5, 0.5, (v) {
+                setModalState(() => _brightness = v);
+                setState(() {});
+              }),
+              _adjustSlider('Contrast', _contrast, 0.5, 1.5, (v) {
+                setModalState(() => _contrast = v);
+                setState(() {});
+              }),
+              _adjustSlider('Saturation', _saturation, 0.0, 2.0, (v) {
+                setModalState(() => _saturation = v);
+                setState(() {});
+              }),
+              _adjustSlider('Hue', _hue, -3.14, 3.14, (v) {
+                setModalState(() => _hue = v);
+                setState(() {});
+              }),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  setModalState(() {
+                    _brightness = 0.0;
+                    _contrast = 1.0;
+                    _saturation = 1.0;
+                    _hue = 0.0;
+                  });
+                  setState(() {});
+                },
+                child: Text('RESET ALL', style: syne(sz: 10, w: FontWeight.w900, c: C.brand)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _adjustSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: dm(sz: 10, c: Colors.white70)),
+            Text(value.toStringAsFixed(2), style: dm(sz: 10, c: C.brand)),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          activeColor: C.brand,
+          inactiveColor: Colors.white10,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
+  void _onNext() async {
+    HapticFeedback.heavyImpact();
+    _videoController?.pause();
+    await _musicPlayer.stop();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.95), borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('CHOOSE EXPORT PATH', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 2)),
+            const SizedBox(height: 24),
+            _exportOption(
+              'FAST SYNC ✨', 
+              'Instant posting. Music is synced on-the-fly.', 
+              Icons.bolt, 
+              () { Navigator.pop(context); _finish(false); }
+            ),
+            const SizedBox(height: 12),
+            _exportOption(
+              'HIGH-QUALITY FLATTEN 🎬', 
+              'Permanent video file. Best for sharing elsewhere.', 
+              Icons.video_library, 
+              () { Navigator.pop(context); _finish(true); }
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _finish(bool flatten) async {
+    if (_sequence.isEmpty) return;
+
+    File? combinedFile;
+    if (flatten) {
+      setState(() => _isProcessing = true);
+      try {
+        String? localMusicPath;
+        if (_selectedTrack != null) {
+          _feedback("Downloading audio sync...");
+          final musicFile = await _musicService.downloadMusicTrack(_selectedTrack!);
+          localMusicPath = musicFile.path;
+        }
+
+        final clips = _sequence.map((c) => ClipData(
+          path: c.file.path,
+          start: c.start,
+          end: c.end,
+          speed: c.speed,
+          volume: c.volume,
+          isVideo: c.isVideo,
+          hasAudio: c.hasAudio,
+        )).toList();
+        
+        _feedback("Synthesizing Mult-Media Studio...");
+        combinedFile = await _videoService.combineSequence(
+          clips: clips,
+          aspectRatio: _selectedAspectRatio,
+          backgroundMusicPath: localMusicPath,
+          musicStart: _audioStart,
+          musicEnd: _audioEnd,
+          musicVolume: _bgmVolume,
+          musicOffset: _audioOffset,
+          voiceOverPath: _voiceOverFile?.path,
+          voiceOverVolume: _voiceVolume,
+        );
+        
+        if (combinedFile == null) {
+          _feedback("Failed to generate master file.");
+        } else {
+          _feedback("Master File Ready! ✨");
+        }
+      } catch (e) {
+        _feedback("Error combining video: $e");
+      } finally {
+        if (mounted) setState(() => _isProcessing = false);
+      }
+    }
+
+    Navigator.pop(context, {
+      'sequence': _sequence,
+      'track': _selectedTrack,
+      'flatten': flatten,
+      'combined_file': combinedFile,
+      'music_vol': _bgmVolume,
+      'voice_vol': _voiceVolume,
+      'original_vol': _originalVolume,
+      'aspect_ratio': _selectedAspectRatio,
+      'voice_over': _voiceOverFile,
+      'overlays': _overlays,       // Contains x, y, fontSize, color, start, end
+      'transitions': _transitions,
+      'filter': _selectedFilter,
+      'beauty': _beautyLevel,
+      'total_duration': _totalDuration,
+      'clip_count': _sequence.length,
+    });
+  }
+
+  void _togglePlayback() {
+    setState(() => _isPlaying = !_isPlaying);
+    if (_isPlaying) {
+      _syncPlay();
+    } else {
+      _syncPause();
+    }
+  }
+
+  void _syncPlay() async {
+    if (_videoController == null) return;
+    
+    // 1. Calculate global time
+    final globalTime = _getGlobalTime(_activeClipIndex, (_videoController!.value.position.inMilliseconds) / 1000.0);
+
+    // 2. Start Video
+    _videoController!.play();
+
+    // 3. Start Music
+    if (_selectedTrack != null) {
+      double musicPos = (globalTime - _audioOffset).clamp(0.0, _audioEnd - _audioStart);
+      if (globalTime >= _audioOffset && globalTime < (_audioOffset + (_audioEnd - _audioStart))) {
+        await _musicPlayer.seek(Duration(milliseconds: (musicPos * 1000).toInt()));
+        await _musicPlayer.resume();
+      } else {
+        await _musicPlayer.pause();
+      }
+    }
+
+    // 4. Start Voiceover
+    if (_voiceOverFile != null) {
+      await _voicePlayer.seek(Duration(milliseconds: (globalTime * 1000).toInt()));
+      await _voicePlayer.resume();
+    }
+  }
+
+  void _syncPause() {
+    _videoController?.pause();
+    _musicPlayer.pause();
+    _voicePlayer.pause();
+  }
+
+  Widget _exportOption(String title, String sub, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.brand.withValues(alpha: 0.3))),
+        child: Row(
+          children: [
+            Icon(icon, color: C.brand, size: 28),
+            const SizedBox(width: 16),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: syne(sz: 13, w: FontWeight.w800, c: Colors.white)),
+                Text(sub, style: dm(sz: 10, c: Colors.white38)),
+              ],
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVolumeSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.95), borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('AUDIO MIXER', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 2)),
+              const SizedBox(height: 32),
+              _volSlider('Original Video', _originalVolume, (v) {
+                setModalState(() => _originalVolume = v);
+                setState(() => _originalVolume = v);
+                _videoController?.setVolume(v);
+              }),
+              const SizedBox(height: 16),
+              _volSlider('Background Music', _bgmVolume, (v) {
+                setModalState(() => _bgmVolume = v);
+                setState(() => _bgmVolume = v);
+                _musicPlayer.setVolume(v);
+              }),
+              const SizedBox(height: 16),
+              _volSlider('Voiceover', _voiceVolume, (v) {
+                setModalState(() => _voiceVolume = v);
+                setState(() => _voiceVolume = v);
+                _voicePlayer.setVolume(v);
+              }),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _volSlider(String label, double val, Function(double) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: dm(sz: 11, c: Colors.white70)),
+        Slider(value: val, onChanged: onChanged, activeColor: C.brand),
+      ],
+    );
+  }
+
+  // - [x] **Phase 1: Restore Missing Tool Sheets**
+  //   - [x] `_showTrimSheet` (Range selection for VideoClip)
+  //   - [x] `_showSpeedSheet` (Playback velocity selector)
+  //   - [x] `_showSoundPicker` (Music library integration)
+  //   - [x] `_showFilterSheet` (Horizontal filter selector)
+  //   - [x] `_showBeautySheet` (Slider-based enhancement)
+
+  void _showCropSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        height: 140,
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.95), borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: ['9:16', '1:1', '4:5'].map((r) => GestureDetector(
+            onTap: () { setState(() => _selectedAspectRatio = r); Navigator.pop(context); },
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.crop_square, color: _selectedAspectRatio == r ? C.brand : Colors.white38),
+                Text(r, style: syne(sz: 10, c: _selectedAspectRatio == r ? C.brand : Colors.white38)),
+              ],
+            ),
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onSaveDraft() async {
+    HapticFeedback.mediumImpact();
+    setState(() => _isProcessing = true);
+    try {
+      final file = widget.initialVideo ?? widget.initialImage;
+      if (file == null) {
+        _feedback("Nothing to save!");
+        return;
+      }
+
+      await widget.state.drafts.saveDraft(
+        mediaFile: file,
+        trackId: _selectedTrack?.id,
+        caption: "", 
+      );
+      _feedback("Saved to Drafts!");
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) widget.state.go('upload');
+    } catch (e) {
+      _feedback("Saving failed: $e");
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  void _feedback(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: syne(sz: 12, c: Colors.white, w: FontWeight.bold)),
+        backgroundColor: Colors.black87,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 1),
+      )
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF030712), // Deeper black for pro look
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. FULL SCREEN PREVIEW (Slightly smaller to accommodate project info)
+          Padding(
+            padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 100),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: AspectRatio(
+                aspectRatio: 9/16,
+                child: MaskingPreview(
+                  isMasked: _isMaskMode,
+                  onToggle: () => setState(() => _isMaskMode = !_isMaskMode),
+                  overlays: _buildVisibleOverlays(),
+                  child: _buildPreviewLayer(),
+                ),
+              ),
+            ),
+          ),
+
+          // 2. SCRIMS
+          if (!_isMaskMode) _buildScrims(),
+
+          // 3. PROJECT HEADER & INFO
+          if (!_isMaskMode) _buildProjectHeader(),
+
+          // 4. PRO EDITOR UI (Bottom Anchored)
+          if (!_isMaskMode) _buildProEditorUI(),
+
+          // 5. BOTTOM NAVIGATION
+          if (!_isMaskMode) _buildBottomNav(),
+          
+          if (_isProcessing) 
+            Container(
+              color: Colors.black87, 
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(color: C.brand, strokeWidth: 2),
+                    const SizedBox(height: 20),
+                    Text("ENGINEERING MEDIA...", style: syne(sz: 10, w: FontWeight.w900, ls: 4, c: C.brand)),
+                  ],
+                )
+              )
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProjectHeader() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top,
+      left: 0, right: 0,
+      child: Column(
+        children: [
+          // Top Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _circleBtn(Icons.arrow_back_ios_new, () => Navigator.pop(context)),
+                Text('NECXA', style: syne(sz: 18, w: FontWeight.w900, ls: 6, c: Colors.white)),
+                GestureDetector(
+                  onTap: _onNext,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: C.blue,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [BoxShadow(color: C.blue.withValues(alpha: 0.3), blurRadius: 10)],
+                    ),
+                    child: Text('Export', style: syne(sz: 12, w: FontWeight.w900, c: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Project Meta
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('New Project', style: syne(sz: 14, w: FontWeight.bold, c: Colors.white)),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.edit_outlined, color: Colors.white38, size: 14),
+                      ],
+                    ),
+                    Text('${(_totalDuration ~/ 60)}:${(_totalDuration % 60).toInt().toString().padLeft(2, '0')} · 1080p · 9:16', style: dm(sz: 10, c: Colors.white38)),
+                  ],
+                ),
+                const Spacer(),
+                _iconTextBtn(Icons.undo, 'Undo', _undo),
+                const SizedBox(width: 12),
+                _iconTextBtn(Icons.redo, 'Redo', _redo),
+                const SizedBox(width: 16),
+                _iconTextBtn(Icons.save_outlined, 'Save', _onSaveDraft),
+                const SizedBox(width: 16),
+                _iconTextBtn(Icons.play_circle_outline, 'Preview', _togglePlayback),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProEditorUI() {
+    return Positioned(
+      bottom: 100, // Above bottom nav
+      left: 0, right: 0,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // TIME CODE OVERLAY
+            _buildTimeCodeOverlay(),
+            const SizedBox(height: 16),
+            
+            // PRIMARY TOOLBAR (Media, Audio, Text, Sticker, etc)
+            _buildPrimaryToolbar(),
+            const SizedBox(height: 16),
+            
+            // MULTI-TRACK TIMELINE
+            _buildAdvancedTimeline(),
+            const SizedBox(height: 16),
+            
+            // QUICK ACTION TOOLBAR (Split, Trim, Speed, etc)
+            _buildQuickToolbar(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryToolbar() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          _primaryAction(Icons.image, 'Media', _addClip),
+          _primaryAction(Icons.music_note, 'Audio', _showSoundPicker),
+          _primaryAction(Icons.text_fields, 'Text', _showTextOverlaySheet),
+          _primaryAction(Icons.emoji_emotions, 'Sticker', () => _feedback("Stickers coming soon")),
+          _primaryAction(Icons.auto_awesome, 'Effect', () => _feedback("Effects coming soon")),
+          _primaryAction(Icons.filter_b_and_w, 'Filter', _showFilterSheet),
+          _primaryAction(Icons.tune, 'Adjust', _showAdjustSheet),
+        ],
+      ),
+    );
+  }
+
+  Widget _primaryAction(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(height: 6),
+            Text(label, style: syne(sz: 9, w: FontWeight.bold, c: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeCodeOverlay() {
+    final currentGlobal = (_videoController != null && _videoController!.value.isInitialized)
+        ? _getGlobalTime(_activeClipIndex, _videoController!.value.position.inMilliseconds / 1000.0)
+        : 0.0;
+    
+    String _fmt(double sec) {
+      final m = sec ~/ 60;
+      final s = (sec % 60).toInt();
+      final f = ((sec * 100) % 100).toInt();
+      return '${m.toString().padLeft(2,'0')}:${s.toString().padLeft(2,'0')}.${f.toString().padLeft(2,'0')}';
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          '${_fmt(currentGlobal)} / ${_fmt(_totalDuration)}',
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white70, letterSpacing: 1.5),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickToolbar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            const SizedBox(width: 8),
+            _quickAction(Icons.content_cut, 'Split', _handleSplit),
+            const SizedBox(width: 16),
+            _quickAction(Icons.crop_rotate, 'Trim', _showTrimSheet),
+            const SizedBox(width: 16),
+            _quickAction(Icons.crop, 'Crop', () => _feedback("Crop coming soon")),
+            const SizedBox(width: 16),
+            _quickAction(Icons.speed, 'Speed', _showSpeedSheet),
+            const SizedBox(width: 16),
+            _quickAction(Icons.volume_up, 'Volume', _showVolumeSheet),
+            const SizedBox(width: 16),
+            _quickAction(Icons.blur_on, 'Fade', () => _feedback("Fade coming soon")),
+            const SizedBox(width: 16),
+            _quickAction(Icons.delete_outline, 'Delete', _handleDeleteClip),
+            const SizedBox(width: 16),
+            _quickAction(Icons.copy, 'Duplicate', () => _feedback("Duplicate coming soon")),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickAction(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white70, size: 18),
+          const SizedBox(height: 4),
+          Text(label, style: syne(sz: 8, w: FontWeight.bold, c: Colors.white38)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdvancedTimeline() {
+    return Container(
+      height: 240, // Height for multiple tracks
+      child: Stack(
+        children: [
+          // Background Gradient for the tracks
+          Positioned.fill(child: Container(color: Colors.black45)),
+          
+          SingleChildScrollView(
+            child: Column(
+              children: [
+                // 1. RULER
+                _buildTimeRuler(),
+                const SizedBox(height: 8),
+                
+                // 2. VIDEO TRACK
+                _buildTrackLayer(
+                  label: 'Video', 
+                  color: const Color(0xFF1E293B), 
+                  child: _buildProTimeline(),
+                  icon: Icons.movie_outlined
+                ),
+                
+                // 3. MUSIC TRACK
+                if (_selectedTrack != null)
+                  _buildTrackLayer(
+                    label: 'Background Music', 
+                    color: const Color(0xFF4F46E5), 
+                    child: _buildAudioTimeline(),
+                    icon: Icons.music_note
+                  ),
+                  
+                // 4. VOICE OVER
+                if (_voiceOverFile != null)
+                  _buildTrackLayer(
+                    label: 'Voiceover', 
+                    color: const Color(0xFF10B981), 
+                    child: Container(height: 40, color: Colors.green.withValues(alpha: 0.2)),
+                    icon: Icons.mic
+                  ),
+
+                // 5. TEXT OVERLAYS
+                if (_overlays.isNotEmpty)
+                  _buildTrackLayer(
+                    label: 'Text Overlay', 
+                    color: const Color(0xFF0EA5E9), 
+                    child: Container(height: 40, color: Colors.blue.withValues(alpha: 0.2)),
+                    icon: Icons.text_fields
+                  ),
+              ],
+            ),
+          ),
+          
+          // GLOBAL PLAYHEAD (Floating over all tracks)
+          _buildGlobalPlayhead(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrackLayer({required String label, required Color color, required Widget child, required IconData icon}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 10),
+                const SizedBox(width: 4),
+                Text(label, style: syne(sz: 8, w: FontWeight.w900, c: color, ls: 1)),
+              ],
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGlobalPlayhead() {
+    final totalDur = _totalDuration;
+    if (totalDur <= 0) return const SizedBox.shrink();
+    
+    return Builder(builder: (context) {
+      final _posMs = _videoController?.value.position.inMilliseconds ?? 0;
+      final currentGlobal = _getGlobalTime(_activeClipIndex, _posMs / 1000.0);
+      final double progress = (currentGlobal / totalDur).clamp(0.0, 1.0);
+      final double fullWidth = MediaQuery.of(context).size.width - 32;
+
+      return Positioned(
+        left: 16 + (progress * fullWidth),
+        top: 0, bottom: 0,
+        child: Column(
+          children: [
+            // Playhead Tip with Time Tag
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(color: C.brand, borderRadius: BorderRadius.circular(4)),
+              child: Text(
+                currentGlobal.toStringAsFixed(1), 
+                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.black)
+              ),
+            ),
+            Expanded(child: Container(width: 1, color: C.brand.withValues(alpha: 0.5))),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildBottomNav() {
+    final items = [
+      {'icon': Icons.timeline, 'label': 'Timeline'},
+      {'icon': Icons.equalizer, 'label': 'Audio Mixer'},
+      {'icon': Icons.text_fields, 'label': 'Text Style'},
+      {'icon': Icons.auto_awesome_motion, 'label': 'Transitions'},
+      {'icon': Icons.settings, 'label': 'Settings'},
+    ];
+
+    return Positioned(
+      bottom: 0, left: 0, right: 0,
+      child: Container(
+        height: 80,
+        padding: const EdgeInsets.only(bottom: 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: List.generate(items.length, (i) => GestureDetector(
+            onTap: () {
+              setState(() => _activeNavIndex = i);
+              if (i == 1) _showVolumeSheet();
+              if (i == 2) _showTextOverlaySheet();
+              if (i == 3) _showTransitionSheet();
+              if (i == 4) _feedback("Settings coming soon");
+            },
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(items[i]['icon'] as IconData, color: _activeNavIndex == i ? C.brand : Colors.white24, size: 20),
+                const SizedBox(height: 4),
+                Text(items[i]['label'] as String, style: syne(sz: 9, w: FontWeight.bold, c: _activeNavIndex == i ? C.brand : Colors.white24)),
+              ],
+            ),
+          )),
+        ),
+      ),
+    );
+  }
+
+  Widget _audioHandle(bool isStart) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragUpdate: (d) {
+        HapticFeedback.selectionClick();
+        setState(() {
+          if (isStart) _audioStart = (_audioStart + d.delta.dx * 0.1).clamp(0.0, _audioEnd - 1.0);
+          else _audioEnd = (_audioEnd + d.delta.dx * 0.1).clamp(_audioStart + 1.0, 180.0);
+        });
+      },
+      child: Container(
+        width: 24, height: 50,
+        alignment: isStart ? Alignment.centerLeft : Alignment.centerRight,
+        child: Container(
+          width: 6, height: 50,
+          decoration: BoxDecoration(
+            color: C.brand, 
+            borderRadius: BorderRadius.circular(4),
+            boxShadow: [BoxShadow(color: C.brand.withValues(alpha: 0.5), blurRadius: 10)]
+          ),
+          child: const Center(child: Icon(Icons.drag_indicator, color: Colors.black, size: 8)),
+        ),
+      ),
+    );
+  }
+
+  /// Small circle icon button used in the project header
+  Widget _circleBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Icon(icon, color: Colors.white, size: 16),
+      ),
+    );
+  }
+
+  /// Icon with text label underneath
+  Widget _iconTextBtn(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 18),
+          const SizedBox(height: 4),
+          Text(label, style: syne(sz: 9, w: FontWeight.bold, c: Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  /// Minimal time ruler drawn above the video track
+  Widget _buildTimeRuler() {
+    final totalDur = _totalDuration;
+    return Container(
+      height: 20,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        const tickCount = 10;
+        return Stack(
+          children: List.generate(tickCount + 1, (i) {
+            final left = (i / tickCount) * w;
+            final t = (i / tickCount) * totalDur;
+            return Positioned(
+              left: left - 12,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 1, height: 6, color: Colors.white24),
+                  Text(
+                    '${t.toStringAsFixed(0)}s',
+                    style: const TextStyle(fontSize: 7, color: Colors.white24),
+                  ),
+                ],
+              ),
+            );
+          }),
+        );
+      }),
+    );
+  }
+
+  /// Audio timeline bar shown in the music track row
+  Widget _buildAudioTimeline() {
+    return Container(
+      height: 40,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF4F46E5).withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF4F46E5).withValues(alpha: 0.4)),
+      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final totalDur = _totalDuration.clamp(1.0, 9999.0);
+        final startPct = (_audioStart / totalDur).clamp(0.0, 1.0);
+        final endPct = (_audioEnd / totalDur).clamp(0.0, 1.0);
+        return Stack(
+          children: [
+            // Active region
+            Positioned(
+              left: w * startPct,
+              width: (w * (endPct - startPct)).clamp(8.0, w),
+              top: 0, bottom: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4F46E5).withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Center(
+                  child: Text(
+                    _selectedTrack?.title ?? '',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 8, color: Colors.white70),
+                  ),
+                ),
+              ),
+            ),
+            // Start handle
+            Positioned(left: w * startPct, top: 0, bottom: 0, child: _audioHandle(true)),
+            // End handle
+            Positioned(left: (w * endPct - 24).clamp(0.0, w - 24), top: 0, bottom: 0, child: _audioHandle(false)),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _buildCategoryTabs() {
+    final tabs = ['Edit', 'Audio', 'Filters', 'Effects', 'Text'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: List.generate(tabs.length, (i) => GestureDetector(
+          onTap: () => setState(() => _activeCategoryIndex = i),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                tabs[i], 
+                style: syne(
+                  sz: 13, 
+                  w: _activeCategoryIndex == i ? FontWeight.w900 : FontWeight.bold,
+                  c: _activeCategoryIndex == i ? Colors.white : Colors.white24,
+                )
+              ),
+              if (_activeCategoryIndex == i)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  width: 4, height: 4,
+                  decoration: const BoxDecoration(color: C.brand, shape: BoxShape.circle),
+                ),
+            ],
+          ),
+        )),
+      ),
+    );
+  }
+
+  Widget _buildActionToolbar() {
+    switch (_activeCategoryIndex) {
+      case 0: // EDIT
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _toolbarBtn(Icons.content_cut, 'Split', _handleSplit),
+            _toolbarBtn(Icons.crop_rotate, 'Trim', _showTrimSheet),
+            _toolbarBtn(Icons.tune, 'Adjust', _showAdjustSheet),
+            _toolbarBtn(Icons.speed, 'Speed', _showSpeedSheet),
+            _toolbarBtn(Icons.delete_outline, 'Delete', _handleDeleteClip),
+          ],
+        );
+      case 1: // AUDIO
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _toolbarBtn(Icons.music_note, 'Sound', _showSoundPicker),
+            _toolbarBtn(Icons.sync, 'Auto-Sync', _syncAudioToVideo),
+            _toolbarBtn(Icons.mic, 'Voice', _toggleVoiceOver),
+            _toolbarBtn(Icons.volume_up, 'Volume', _showVolumeSheet),
+          ],
+        );
+      case 2: // FILTERS
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _toolbarBtn(Icons.filter_hdr, 'Filters', _showFilterSheet),
+            _toolbarBtn(Icons.face_retouching_natural, 'Beauty', _showBeautySheet),
+          ],
+        );
+      case 3: // EFFECTS
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _toolbarBtn(Icons.auto_awesome_motion, 'Transition', _showTransitionSheet),
+            _toolbarBtn(Icons.auto_awesome, 'Effects', () => _feedback("Effects Coming Soon")),
+          ],
+        );
+      case 4: // TEXT & OVERLAYS
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _toolbarBtn(Icons.text_fields, 'Add Text', _showTextOverlaySheet),
+            _toolbarBtn(Icons.image, 'Add Image', _showImageOverlayPicker),
+            _toolbarBtn(Icons.history_toggle_off, 'Timeline', _showTimelineSheet),
+          ],
+        );
+      default:
+        return Center(child: Text('Coming Soon', style: dm(sz: 10, c: Colors.white24)));
+    }
+  }
+
+  Widget _toolbarBtn(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 70, height: 60,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white70, size: 18),
+            const SizedBox(height: 4),
+            Text(label, style: syne(sz: 10, w: FontWeight.bold, c: Colors.white70)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProTimeline() {
+    final totalDur = _totalDuration;
+    if (totalDur <= 0) return const SizedBox.shrink();
+
+    return Container(
+      height: 80,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final fullWidth = constraints.maxWidth;
+        
+        return GestureDetector(
+          onHorizontalDragUpdate: (details) {
+            final double x = details.localPosition.dx;
+            final double pct = (x / fullWidth).clamp(0.0, 1.0);
+            _seekGlobal(pct * totalDur);
+          },
+          onTapDown: (details) {
+             final double x = details.localPosition.dx;
+             final double pct = (x / fullWidth).clamp(0.0, 1.0);
+             _seekGlobal(pct * totalDur);
+          },
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              // 1. WAVEFORM / TICKS
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(60, (i) => Container(
+                    width: 1, 
+                    height: i % 10 == 0 ? 30 : 10, 
+                    color: Colors.white.withValues(alpha: 0.05),
+                  )),
+                ),
+              ),
+
+              // 2. CLIP SEGMENTS (PROPORTIONAL)
+              _buildTimelineClips(fullWidth),
+              
+              // 3. GLOBAL PLAYHEAD
+              Builder(builder: (context) {
+                final _posMs = _videoController?.value.position.inMilliseconds ?? 0;
+                final currentGlobal = _getGlobalTime(_activeClipIndex, _posMs / 1000.0);
+                final double progress = (currentGlobal / totalDur).clamp(0.0, 1.0);
+                
+                return Positioned(
+                  left: progress * fullWidth,
+                  child: Container(
+                    width: 2, height: 65, 
+                    color: C.brand,
+                    child: Column(
+                      children: [
+                        Container(width: 8, height: 8, decoration: const BoxDecoration(color: C.brand, shape: BoxShape.circle)),
+                        const Spacer(),
+                        Container(width: 8, height: 4, decoration: const BoxDecoration(color: C.brand, borderRadius: BorderRadius.vertical(top: Radius.circular(4)))),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildTimelineClips(double width) {
+    final totalDur = _totalDuration;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(), // Dragging handles seeking
+      child: Row(
+        children: [
+          ..._sequence.asMap().entries.map((entry) {
+            int index = entry.key;
+            VideoClip c = entry.value;
+            double clipDur = (c.end - c.start) / c.speed;
+            double proportionalWidth = (clipDur / totalDur) * width;
+            
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    setState(() => _activeClipIndex = index);
+                    _loadClip(_activeClipIndex);
+                  },
+                  child: Container(
+                    width: proportionalWidth.clamp(40.0, width), 
+                    height: 50,
+                    margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                    decoration: BoxDecoration(
+                      color: index == _activeClipIndex ? C.brand.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: index == _activeClipIndex ? C.brand : Colors.white10, 
+                        width: index == _activeClipIndex ? 2 : 1
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: c.isVideo 
+                            ? Icon(Icons.movie_creation_outlined, color: index == _activeClipIndex ? C.brand : Colors.white24, size: 14)
+                            : Icon(Icons.image_outlined, color: index == _activeClipIndex ? C.brand : Colors.white24, size: 14),
+                        ),
+                        Positioned(
+                          top: 2, left: 4,
+                          child: Row(
+                            children: [
+                              Text('${index + 1}', style: syne(sz: 9, w: FontWeight.bold, c: Colors.white70)),
+                              if (c.isVideo && !c.isProxyReady)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 4),
+                                  child: SizedBox(width: 8, height: 8, child: CircularProgressIndicator(strokeWidth: 1, color: C.brand)),
+                                ),
+                              if (c.isVideo && c.isProxyReady)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 4),
+                                  child: Icon(Icons.bolt, size: 10, color: C.brand),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (proportionalWidth > 40)
+                          Positioned(
+                            bottom: 2, right: 4,
+                            child: Text('${clipDur.toStringAsFixed(1)}s', style: dm(sz: 8, c: Colors.white54)),
+                          )
+                      ]
+                    ),
+                  ),
+                ),
+                if (index < _sequence.length - 1)
+                  GestureDetector(
+                    onTap: _showTransitionSheet,
+                    child: Container(
+                      width: 16, height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)),
+                      child: const Center(child: Icon(Icons.horizontal_rule, color: Colors.black, size: 12)),
+                    ),
+                  ),
+              ],
+            );
+          }).toList(),
+          
+          // Add Clip Button
+          GestureDetector(
+            onTap: _addClip,
+            child: Container(
+              width: 50,
+              height: 50,
+              margin: const EdgeInsets.only(left: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.add_rounded, color: Colors.white70, size: 16),
+                  const SizedBox(height: 2),
+                  Text('Add', style: syne(sz: 9, w: FontWeight.bold, c: Colors.white70)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleSplit() {
+    _saveHistory();
+    final currentPos = _videoController!.value.position.inMilliseconds / 1000.0;
+    final activeClip = _sequence[_activeClipIndex];
+    
+    // Safety check: ensure split isn't at the very start or end
+    if (currentPos <= 0.5 || currentPos >= (activeClip.duration - 0.5)) {
+      _feedback("Too close to edge to split");
+      return;
+    }
+
+    setState(() {
+      // 1. Create a copy of the current clip
+      final newClip = activeClip.copy();
+      
+      // 2. Adjust Out-point of current clip
+      activeClip.end = currentPos;
+      
+      // 3. Adjust In-point of new clip
+      newClip.start = currentPos;
+      
+      // 4. Insert into sequence
+      _sequence.insert(_activeClipIndex + 1, newClip);
+      
+      HapticFeedback.mediumImpact();
+      _feedback("Clip Split! ✂️");
+    });
+  }
+
+  void _handleDeleteClip() {
+    _saveHistory();
+    setState(() {
+      _sequence.removeAt(_activeClipIndex);
+      if (_activeClipIndex >= _sequence.length) _activeClipIndex = _sequence.length - 1;
+      _loadClip(_activeClipIndex);
+    });
+  }
+
+  void _showTrimSheet() {
+    final clip = _sequence[_activeClipIndex];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: C.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('TRIM CLIP', style: syne(sz: 14, w: FontWeight.w900, ls: 2)),
+              const SizedBox(height: 32),
+              RangeSlider(
+                values: RangeValues(clip.start, clip.end),
+                min: 0,
+                max: clip.duration,
+                activeColor: C.brand,
+                inactiveColor: Colors.white10,
+                onChanged: (values) {
+                  _saveHistory();
+                  setModalState(() {
+                    clip.start = values.start;
+                    clip.end = values.end;
+                  });
+                  setState(() {});
+                },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Start: ${clip.start.toStringAsFixed(1)}s', style: dm(sz: 10, c: Colors.white54)),
+                  Text('End: ${clip.end.toStringAsFixed(1)}s', style: dm(sz: 10, c: Colors.white54)),
+                ],
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: C.brand,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.all(16),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('DONE', style: syne(sz: 14, w: FontWeight.w900)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSpeedSheet() {
+    final clip = _sequence[_activeClipIndex];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: C.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('PLAYBACK SPEED', style: syne(sz: 14, w: FontWeight.w900, ls: 2)),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [0.5, 1.0, 1.5, 2.0].map((s) => GestureDetector(
+                onTap: () {
+                  _saveHistory();
+                  setState(() {
+                    clip.speed = s;
+                    _videoController?.setPlaybackSpeed(s);
+                  });
+                  Navigator.pop(context);
+                  _feedback("Speed: ${s}x");
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: clip.speed == s ? C.brand : Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('${s}x', style: syne(sz: 14, w: FontWeight.bold, c: clip.speed == s ? Colors.black : Colors.white70)),
+                ),
+              )).toList(),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _syncAudioToVideo() {
+    if (_sequence.isEmpty || _selectedTrack == null) return;
+    double totalVideoDuration = _sequence.fold(0.0, (sum, clip) => sum + (clip.end - clip.start));
+    setState(() {
+      _audioStart = 0.0;
+      _audioEnd = totalVideoDuration.clamp(1.0, 60.0);
+    });
+    _feedback("Audio Synced to ${totalVideoDuration.toStringAsFixed(1)}s");
+  }
+
+  void _showSoundPicker() async {
+    _videoController?.pause();
+    await _musicPlayer.stop();
+
+    if (!mounted) return;
+    
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MusicLibraryScreen()),
+    );
+
+    if (result is MusicTrack) {
+      setState(() {
+        _selectedTrack = result;
+        _activeSound = result.title;
+      });
+      
+      _syncAudioToVideo();
+      
+      _musicPlayer.setReleaseMode(ReleaseMode.loop);
+      await _musicPlayer.play(UrlSource(result.audioUrl));
+      _videoController?.play();
+      _feedback("Sound synced: ${result.title}");
+    } else {
+      _videoController?.play();
+    }
+  }
+
+  void _showFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        height: 140,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.8),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(16),
+          children: ImageFilter.values.map((f) => GestureDetector(
+            onTap: () { setState(() => _selectedFilter = f); Navigator.pop(context); },
+            child: Container(
+              width: 80,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: _selectedFilter == f ? C.brand : Colors.white10,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _selectedFilter == f ? C.brand : Colors.white24),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.filter, color: _selectedFilter == f ? Colors.black : Colors.white, size: 20),
+                  const SizedBox(height: 4),
+                  Text(f.name.toUpperCase(), style: syne(sz: 8, w: FontWeight.bold, c: _selectedFilter == f ? Colors.black : Colors.white)),
+                ],
+              ),
+            ),
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _applyBeautyFilterToClip() async {
+    final clip = _sequence[_activeClipIndex];
+    if (!clip.isVideo) {
+      _feedback("Select a video clip first.");
+      return;
+    }
+
+    _videoController?.pause();
+    _musicPlayer.pause();
+    Navigator.pop(context); // close sheet
+
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (_) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: C.brand),
+            const SizedBox(height: 16),
+            Text("Applying Beauty Filter (FFmpeg)...", style: syne(sz: 14, w: FontWeight.bold, c: Colors.white)),
+          ]
+        )
+      )
+    );
+
+    try {
+      final enhancedFile = await _videoService.enhanceVideo(
+        inputVideo: clip.file,
+        options: const VideoEnhancementOptions(applyBeautyFilter: true),
+      );
+
+      if (mounted) {
+        setState(() {
+          _saveHistory();
+          _sequence[_activeClipIndex] = VideoClip(
+            file: enhancedFile,
+            start: clip.start,
+            end: clip.end,
+            duration: clip.duration,
+            speed: clip.speed,
+            volume: clip.volume,
+          );
+        });
+        _feedback("Beauty Filter Applied! ✨");
+      }
+    } catch (e) {
+      if (mounted) _feedback("Failed to apply filter: $e");
+    } finally {
+      if (mounted) {
+        Navigator.pop(context); // close dialog
+        _loadClip(_activeClipIndex); // Reload the new video
+      }
+    }
+  }
+
+  void _showBeautySheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        height: 220,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.95), borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
+        child: Column(
+          children: [
+            Text('FACE BEAUTY (POST-PROCESS)', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 2)),
+            const SizedBox(height: 12),
+            Text('Uses our custom FFmpeg min-gpl engine to apply skin smoothing (smartblur) and color equalization.', style: dm(sz: 12, c: Colors.white54), textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.auto_awesome, color: Colors.black),
+              label: Text("Apply Beauty Filter", style: syne(sz: 14, w: FontWeight.bold, c: Colors.black)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: C.brand,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+              onPressed: () => _applyBeautyFilterToClip(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── CORE UI UTILITIES ───────────────────────────────────────
+  Widget _buildPreviewLayer() {
+    double ratio = 9 / 16;
+    if (_selectedAspectRatio == '1:1') ratio = 1.0;
+    else if (_selectedAspectRatio == '4:5') ratio = 4 / 5;
+
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      Widget player = Center(
+        child: AspectRatio(
+          aspectRatio: ratio,
+          child: ClipRect(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _videoController!.value.size.width,
+                height: _videoController!.value.size.height,
+                child: VideoPlayer(_videoController!),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Apply Shader if loaded
+      if (_shaderProgram != null) {
+        return CustomPaint(
+          painter: ShaderPainter(
+            shader: _shaderProgram!.fragmentShader(),
+            brightness: _brightness,
+            contrast: _contrast,
+            saturation: _saturation,
+            hue: _hue,
+          ),
+          child: player,
+        );
+      }
+
+      return player;
+    }
+    return const Center(child: Icon(Icons.movie_filter_outlined, color: Colors.white24, size: 60));
+  }
+
+  Widget _buildScrims() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.4),
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.4),
+              ],
+              stops: const [0, 0.3, 1.0],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navBtn(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 24),
+          const SizedBox(height: 4),
+          Text(label, style: syne(sz: 10, w: FontWeight.bold, c: Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  Widget _publishBtn() {
+    return GestureDetector(
+      onTap: _onNext,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [C.brand, Color(0xFF3B82F6)]),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: C.brand.withValues(alpha: 0.3), blurRadius: 10)],
+        ),
+        child: Row(
+          children: [
+            Text('NEXT', style: syne(sz: 14, w: FontWeight.w900, c: Colors.black, ls: 1)),
+            const SizedBox(width: 8),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionRow(IconData icon, String label, VoidCallback onTap, {Color c = Colors.white}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16)),
+        child: Row(
+          children: [
+            Icon(icon, color: c, size: 20),
+            const SizedBox(width: 16),
+            Text(label, style: syne(sz: 14, w: FontWeight.bold, c: c)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildVisibleOverlays() {
+    if (_videoController == null) return [];
+    
+    final currentGlobal = _getGlobalTime(_activeClipIndex, _videoController!.value.position.inMilliseconds / 1000.0);
+    final totalDur = _totalDuration;
+    final double progress = totalDur > 0 ? (currentGlobal / totalDur) : 0.0;
+        
+    return _overlays.asMap().entries.where((entry) {
+      final o = entry.value;
+      return progress >= (o['start'] ?? 0.0) && progress <= (o['end'] ?? 1.0);
+    }).map((entry) {
+      final int index = entry.key;
+      final o = entry.value;
+      final double x = o['x'] ?? 0.5;
+      final double y = o['y'] ?? 0.5;
+
+      if (o.containsKey('image')) {
+        return Positioned(
+          top: MediaQuery.of(context).size.height * y - 50,
+          left: MediaQuery.of(context).size.width * x - 50,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              setState(() {
+                o['x'] = (o['x'] ?? 0.5) + details.delta.dx / MediaQuery.of(context).size.width;
+                o['y'] = (o['y'] ?? 0.5) + details.delta.dy / MediaQuery.of(context).size.height;
+              });
+            },
+            child: Container(
+              width: 100,
+              decoration: BoxDecoration(
+                border: Border.all(color: C.brand.withValues(alpha: 0.5), width: 1),
+              ),
+              child: Image.file(File(o['image']), fit: BoxFit.contain),
+            ),
+          ),
+        );
+      }
+      
+      return Positioned(
+        top: MediaQuery.of(context).size.height * y - 20,
+        left: MediaQuery.of(context).size.width * x - 100,
+        child: GestureDetector(
+          onPanUpdate: (details) {
+            setState(() {
+              o['x'] = ((o['x'] as double) + details.delta.dx / MediaQuery.of(context).size.width).clamp(0.05, 0.95);
+              o['y'] = ((o['y'] as double) + details.delta.dy / MediaQuery.of(context).size.height).clamp(0.05, 0.95);
+            });
+          },
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 60, maxWidth: 280),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              // Subtle selection indicator
+              border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.5),
+            ),
+            child: Text(
+              o['text'] ?? '', 
+              style: TextStyle(
+                fontSize: (o['fontSize'] as double?) ?? 28.0,
+                fontWeight: FontWeight.w900,
+                color: o['color'] as Color? ?? Colors.white,
+                letterSpacing: 1.0,
+                shadows: const [Shadow(blurRadius: 8.0, color: Colors.black, offset: Offset(2.0, 2.0))],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  void _showTimelineSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          height: 400,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.95), borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
+          child: Column(
+            children: [
+              Text('LAYER TIMELINE', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 2)),
+              const SizedBox(height: 24),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _overlays.length,
+                  itemBuilder: (context, i) => TimelineTrack(
+                    label: _overlays[i]['text'],
+                    startTime: _overlays[i]['start'],
+                    endTime: _overlays[i]['end'],
+                    color: _overlays[i]['color'],
+                    onRangeChanged: (start, end) {
+                      setModalState(() {
+                        _overlays[i]['start'] = start;
+                        _overlays[i]['end'] = end;
+                      });
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ),
+              _actionRow(Icons.check, 'Done', () => Navigator.pop(context), c: C.brand),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  void _showTransitionSheet() {
+    final fx = ['None', 'Fade', 'Slide', 'Zoom', 'Dissolve'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.9), borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('CLIP TRANSITIONS', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 2)),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: fx.length,
+                itemBuilder: (context, i) => GestureDetector(
+                  onTap: () {
+                    setState(() => _transitions[_activeClipIndex] = fx[i]);
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    width: 80,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      color: _transitions[_activeClipIndex] == fx[i] ? C.brand.withValues(alpha: 0.2) : Colors.white10,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _transitions[_activeClipIndex] == fx[i] ? C.brand : Colors.white10),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.auto_awesome_motion, color: _transitions[_activeClipIndex] == fx[i] ? C.brand : Colors.white),
+                        const SizedBox(height: 8),
+                        Text(fx[i], style: dm(sz: 11)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Future<void> _showImageOverlayPicker() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() => _overlays.add({
+        'image': picked.path,
+        'start': 0.0,
+        'end': 1.0,
+      }));
+      _feedback("Image Overlay Added");
+    }
+  }
+
+  void _showTextOverlaySheet() {
+    final ctrl = TextEditingController();
+    Color selectedColor = Colors.white;
+    double fontSize = 28.0;
+    final colors = [
+      Colors.white, Colors.yellow, Colors.greenAccent, 
+      C.brand, Colors.redAccent, Colors.purpleAccent, Colors.black,
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+            decoration: BoxDecoration(
+              color: Colors.grey[950] ?? Colors.black,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle bar
+                Center(
+                  child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                ),
+                Text('TEXT OVERLAY', style: syne(sz: 13, w: FontWeight.w900, c: Colors.white, ls: 2)),
+                const SizedBox(height: 16),
+                // Text input
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    style: TextStyle(fontSize: fontSize, color: selectedColor, fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'Type something...', 
+                      hintStyle: dm(c: Colors.white24), 
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Font size
+                Text('SIZE  ${fontSize.toInt()}pt', style: dm(sz: 11, c: Colors.white54)),
+                Slider(
+                  value: fontSize,
+                  min: 14,
+                  max: 64,
+                  divisions: 10,
+                  activeColor: C.brand,
+                  inactiveColor: Colors.white12,
+                  onChanged: (v) => setSheet(() => fontSize = v),
+                ),
+                const SizedBox(height: 8),
+                // Color picker
+                Text('COLOR', style: dm(sz: 11, c: Colors.white54)),
+                const SizedBox(height: 10),
+                Row(
+                  children: colors.map((c) => GestureDetector(
+                    onTap: () => setSheet(() => selectedColor = c),
+                    child: Container(
+                      width: 34, height: 34,
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: selectedColor == c ? C.brand : Colors.white24, 
+                          width: selectedColor == c ? 3 : 1,
+                        ),
+                        boxShadow: selectedColor == c 
+                          ? [BoxShadow(color: C.brand.withValues(alpha: 0.5), blurRadius: 8)] 
+                          : [],
+                      ),
+                    ),
+                  )).toList(),
+                ),
+                const SizedBox(height: 24),
+                // Add button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.check_rounded, color: Colors.black),
+                    label: Text('ADD TO VIDEO', style: syne(sz: 13, w: FontWeight.w900, c: Colors.black)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: C.brand,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () {
+                      if (ctrl.text.isNotEmpty) {
+                        setState(() => _overlays.add({
+                          'text': ctrl.text,
+                          'start': 0.0,
+                          'end': 1.0,
+                          'color': selectedColor,
+                          'fontSize': fontSize,
+                          'x': 0.5,
+                          'y': 0.5,
+                        }));
+                      }
+                      Navigator.pop(context);
+                      _feedback('Text added! Drag it to position 👆');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleVoiceOver() async {
+    if (_isRecordingVoice) {
+      final path = await _voiceRecorder.stop();
+      if (path != null) {
+        setState(() {
+          _isRecordingVoice = false;
+          _voiceOverFile = File(path);
+        });
+        _feedback("Voice Over Recorded");
+      }
+    } else {
+      final hasPerm = await _voiceRecorder.hasPermission();
+      if (!hasPerm) return;
+      final dir = await getTemporaryDirectory();
+      final p = "${dir.path}/vo_${DateTime.now().millisecondsSinceEpoch}.m4a";
+      await _voiceRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: p);
+      setState(() => _isRecordingVoice = true);
+    }
+  }
+}
+
+class MaskingPreview extends StatelessWidget {
+  final Widget child;
+  final bool isMasked;
+  final VoidCallback onToggle;
+  final List<Widget> overlays;
+
+  const MaskingPreview({
+    super.key, 
+    required this.child, 
+    required this.isMasked, 
+    required this.onToggle,
+    required this.overlays,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        ...overlays,
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 10,
+          left: 16,
+          child: GestureDetector(
+            onTap: onToggle,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.black26, shape: BoxShape.circle),
+              child: Icon(isMasked ? Icons.visibility_off : Icons.visibility, color: Colors.white70, size: 20),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class TimelineTrack extends StatelessWidget {
+  final String label;
+  final double startTime;
+  final double endTime;
+  final Color color;
+  final Function(double, double) onRangeChanged;
+
+  const TimelineTrack({
+    super.key, 
+    required this.label, 
+    required this.startTime, 
+    required this.endTime,
+    required this.color,
+    required this.onRangeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: dm(sz: 12, w: FontWeight.bold)),
+          const SizedBox(height: 8),
+          RangeSlider(
+            values: RangeValues(startTime, endTime),
+            onChanged: (v) => onRangeChanged(v.start, v.end),
+            activeColor: color,
+            inactiveColor: Colors.white10,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ShaderPainter extends CustomPainter {
+  final FragmentShader shader;
+  final double brightness;
+  final double contrast;
+  final double saturation;
+  final double hue;
+
+  ShaderPainter({
+    required this.shader,
+    required this.brightness,
+    required this.contrast,
+    required this.saturation,
+    required this.hue,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    shader.setFloat(0, size.width);
+    shader.setFloat(1, size.height);
+    shader.setFloat(2, brightness);
+    shader.setFloat(3, contrast);
+    shader.setFloat(4, saturation);
+    shader.setFloat(5, hue);
+    
+    final paint = Paint()..shader = shader;
+    canvas.drawRect(Offset.zero & size, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant ShaderPainter oldDelegate) {
+    return oldDelegate.brightness != brightness ||
+        oldDelegate.contrast != contrast ||
+        oldDelegate.saturation != saturation ||
+        oldDelegate.hue != hue;
+  }
+}

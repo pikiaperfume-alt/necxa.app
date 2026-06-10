@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── COIN PACKS ──────────────────────────────────────────────────────────
+    match /coin_packs/{packId} {
+      allow read: if true;
+      allow write: if false; // admin console only
+    }
+
+    // ── WALLETS ──────────────────────────────────────────────────────────────
+    match /wallets/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // All mutations via Cloud Functions (admin SDK bypasses these rules)
+      allow write: if false;
+    }
+
+    // ── VAULT TRANSACTIONS ───────────────────────────────────────────────────
+    match /vault_transactions/{txId} {
+      allow read: if request.auth != null
+                  && resource.data.user_id == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    // ── GIFT ITEMS CATALOGUE ─────────────────────────────────────────────────
+    match /gift_items/{itemId} {
+      allow read: if true;          // public — anyone can browse gifts
+      allow write: if false;        // seeded by Cloud Function / admin only
+    }
+
+    // ── NCX GIFTS LEDGER ─────────────────────────────────────────────────────
+    match /ncx_gifts/{giftId} {
+      // Sender can read their own gifts
+      allow read: if request.auth != null
+                  && resource.data.sender_id == request.auth.uid;
+
+      // Receiver can read gifts sent to them
+      allow read: if request.auth != null
+                  && resource.data.receiver_id == request.auth.uid;
+
+      // Public feed: non-anonymous gifts on social contexts
+      allow read: if resource.data.is_anonymous == false
+                  && resource.data.context_type in [
+                       'creator_post', 'live_stream', 'broadcast_message'
+                     ];
+
+      // All writes via processGift Cloud Function (admin SDK)
+      allow create, update, delete: if false;
+    }
+
+    // ── GIFT STREAKS ─────────────────────────────────────────────────────────
+    match /gift_streaks/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // updated by processGift Cloud Function
+    }
+
+    // ── NOTIFICATIONS ────────────────────────────────────────────────────────
+    match /notifications/{notifId} {
+      // User can read and mark their own notifications as read
+      allow read: if request.auth != null
+                  && resource.data.user_id == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.user_id == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['is_read']);
+      allow create, delete: if false;
+    }
+
+    // ── DEFAULT SECURE REJECT ────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

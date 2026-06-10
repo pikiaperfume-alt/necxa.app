@@ -1,0 +1,11 @@
+{
+    "files.autoSave": "onWindowChange",
+    "editor.experimental.treeSitterTelemetry": true,
+    "editor.experimental.preferTreeSitter.typescript": true,
+    "editor.experimental.preferTreeSitter.regex": true,
+    "dart.flutterAdditionalArgs": [
+        ""
+    ],
+    "dart.enableCompletionCommitCharacters": true,
+    "java.configuration.updateBuildConfiguration": "automatic"
+}

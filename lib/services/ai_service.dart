@@ -1,0 +1,304 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+// ─── Live Safety Scan Result ──────────────────────────────────────────────────
+class LiveSafetyResult {
+  final bool safe;
+  final Map<String, bool> flags; // e.g. {'pornographic': true, 'drug_abuse': false}
+  final String severity;         // 'none' | 'low' | 'medium' | 'high' | 'critical'
+  final String? reason;
+  final double confidence;
+
+  const LiveSafetyResult({
+    required this.safe,
+    required this.flags,
+    required this.severity,
+    this.reason,
+    required this.confidence,
+  });
+
+  bool get isCritical => severity == 'critical';
+  bool get isHigh => severity == 'high' || isCritical;
+  bool get hasChildSafety => flags['child_safety'] == true;
+  bool get hasPornographic => flags['pornographic'] == true;
+  bool get hasDrugAbuse => flags['drug_abuse'] == true;
+  bool get hasDangerous => flags['dangerous_content'] == true;
+
+  factory LiveSafetyResult.safe() => const LiveSafetyResult(
+    safe: true, flags: {}, severity: 'none', confidence: 1.0,
+  );
+
+  factory LiveSafetyResult.fromJson(Map<String, dynamic> json) => LiveSafetyResult(
+    safe: json['safe'] ?? true,
+    flags: Map<String, bool>.from(json['flags'] ?? {}),
+    severity: json['severity'] ?? 'none',
+    reason: json['reason'],
+    confidence: (json['confidence'] ?? 0.0).toDouble(),
+  );
+}
+
+class NecxaAI {
+  // ── SECONDARY SUPABASE CLIENT FOR DECOUPLED AI SERVICES ──
+  static final SupabaseClient _aiClient = SupabaseClient(
+    'https://ayvescksetiuekoyfqar.supabase.co',
+    'sb_publishable_Bc_CXsA3BiuP36E4KxgkYQ_QmvyV7HT',
+  );
+
+  // ── HELPERS ──
+  static Future<String> fileToBase64(File file) async {
+    final bytes = await file.readAsBytes();
+    return base64Encode(bytes);
+  }
+
+  // Generate headers attaching the active primary user session token dynamically
+  static Map<String, String> _aiHeaders({Map<String, String>? extra}) {
+    final Map<String, String> headers = {};
+    if (extra != null) {
+      headers.addAll(extra);
+    }
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        headers['x-primary-jwt'] = session.accessToken;
+      }
+    } catch (_) {}
+    return headers;
+  }
+
+  // ── IDENTITY VERIFICATION ──
+  static Future<Map<String, dynamic>> verifyID(File imageFile, {String? userId}) async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) throw Exception("User must be logged in to verify ID natively.");
+
+      final base64 = await fileToBase64(imageFile);
+      
+      final res = await _aiClient.functions.invoke(
+        'verify-identity-shard',
+        headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
+        body: {
+          'action': 'verify-id',
+          'payload': {
+            'imageBase64': base64,
+            'userId': userId ?? session.user.id,
+          }
+        }
+      );
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'verified': false, 'feedback': 'Capture audit failed: $e', 'score': 0};
+    }
+  }
+
+  // ── LIVE STREAM SAFETY SCAN ──────────────────────────────────────────────────
+  /// Scans a single captured live frame for policy violations.
+  /// Detects: pornographic content, drug abuse, child safety, dangerous acts, hate symbols.
+  /// Falls back to [LiveSafetyResult.safe()] on network errors to avoid false stream kills.
+  static Future<LiveSafetyResult> scanLiveFrame(
+    File frameFile, {
+    String? channelId,
+    String? streamerId,
+  }) async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) return LiveSafetyResult.safe();
+
+      final base64 = await fileToBase64(frameFile);
+
+      final res = await _aiClient.functions.invoke(
+        'verify-content',
+        headers: _aiHeaders(),
+        body: {
+          'action': 'live_safety_scan',
+          'mediaBase64': base64,
+          'mimeType': 'image/jpeg',
+          'channelId': channelId,
+          'streamerId': streamerId ?? session.user.id,
+        },
+      );
+
+      if (res.data == null) return LiveSafetyResult.safe();
+      return LiveSafetyResult.fromJson(Map<String, dynamic>.from(res.data));
+    } catch (e) {
+      // Non-fatal: never kill a stream on a network error — log and continue.
+      debugPrint('🛡️ scanLiveFrame (non-fatal): $e');
+      return LiveSafetyResult.safe();
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifySelfie(File selfieFile, File idReferenceFile, {String? userId}) async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) throw Exception("User must be logged in to verify biometrics natively.");
+
+      final selfieBase64 = await fileToBase64(selfieFile);
+      final idBase64 = await fileToBase64(idReferenceFile);
+      
+      final res = await _aiClient.functions.invoke(
+        'verify-identity-shard',
+        headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
+        body: {
+          'action': 'verify-selfie',
+          'payload': {
+            'imageBase64': selfieBase64,
+            'idImageBase64': idBase64,
+            'userId': userId ?? session.user.id,
+          }
+        }
+      );
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'verified': false, 'feedback': 'Biometric audit failed: $e', 'score': 0};
+    }
+  }
+
+  // Legacy compatibility check
+  static Future<Map<String, dynamic>> verifyIdentity(String idBase64, String selfieBase64, {String? userId}) async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      final res = await _aiClient.functions.invoke(
+        'verify-identity-shard',
+        headers: _aiHeaders(),
+        body: {
+          'action': 'verify-selfie',
+          'payload': {
+            'imageBase64': selfieBase64,
+            'idImageBase64': idBase64,
+            'userId': userId ?? session?.user.id ?? 'flutter_user',
+          }
+        }
+      );
+
+      final result = Map<String, dynamic>.from(res.data);
+      // Compatibility with previous snippets
+      result['match'] = result['match'] ?? result['verified'] ?? false;
+      return result;
+    } catch (e) {
+      return {'match': false, 'reason': 'Connection error: $e'};
+    }
+  }
+
+  // ── CHAT MISSION CONTROL ──
+  static Future<String> askNexca(String userPrompt, {Map<String, dynamic>? context}) async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return 'Login required for Necxa Chat';
+
+    try {
+      final res = await _aiClient.functions.invoke(
+        'necxa-chat',
+        headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
+        body: {
+          'messages': [{'role': 'user', 'content': userPrompt}],
+          'context': context,
+          'userId': session.user.id,
+        }
+      );
+      final data = Map<String, dynamic>.from(res.data);
+      return data['content'] ?? 'No response';
+    } catch (e) {
+      return 'Error connecting to Necxa AI: $e';
+    }
+  }
+
+  // ── MARKETPLACE VERIFICATION ──
+  static Future<Map<String, dynamic>> createVerifiedListing({
+    required String title,
+    required String description,
+    required double price,
+    required String type,
+    required String imageBase64,
+    String? userId,
+  }) async {
+    final session = Supabase.instance.client.auth.currentSession;
+    try {
+      final res = await Supabase.instance.client.functions.invoke(
+        'listing-create',
+        headers: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'},
+        body: {
+          'title': title,
+          'description': description,
+          'price': price,
+          'type': type,
+          'imageBase64': imageBase64,
+          'userId': session?.user.id ?? userId,
+        }
+      );
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'status': 'error', 'description': e.toString()};
+    }
+  }
+
+  // ── CONTENT VERIFICATION (Generic) ──
+  static Future<Map<String, dynamic>> verifyContent({
+    required String type,
+    required String mediaBase64,
+    required String mimeType,
+    String? textContent,
+    String? userId,
+  }) async {
+    final session = Supabase.instance.client.auth.currentSession;
+    try {
+      final res = await _aiClient.functions.invoke(
+        'verify-content',
+        headers: _aiHeaders(),
+        body: {
+          'type': type,
+          'mediaBase64': mediaBase64,
+          'mimeType': mimeType,
+          if (textContent != null) 'textContent': textContent,
+          'userId': session?.user.id ?? userId ?? 'flutter_user',
+        }
+      );
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'status': 'error', 'description': e.toString()};
+    }
+  }
+
+  // ── SPECIFIC CONTENT METHODS ──
+  static Future<Map<String, dynamic>> verifyPhoto(String photoBase64) => 
+    verifyContent(type: 'photo', mediaBase64: photoBase64, mimeType: 'image/jpeg');
+
+  static Future<Map<String, dynamic>> verifyMusic(String audioBase64) => 
+    verifyContent(type: 'music', mediaBase64: audioBase64, mimeType: 'audio/mpeg');
+
+  static Future<Map<String, dynamic>> verifyVideo(String videoBase64) => 
+    verifyContent(type: 'video', mediaBase64: videoBase64, mimeType: 'video/mp4');
+
+  // ── PROPERTY UTILITY VERIFICATION ──
+  static Future<Map<String, dynamic>> verifyUtilityBill(String billBase64, String type, {String? userId}) async {
+    try {
+      final res = await _aiClient.functions.invoke(
+        'utility-verify',
+        headers: _aiHeaders(),
+        body: {
+          'action': 'verify-utility',
+          'payload': {
+            'type': type,
+            'imageBase64': billBase64,
+          }
+        }
+      );
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'status': 'error', 'description': e.toString()};
+    }
+  }
+
+  // ── NATIVE PROPERTY VERIFICATION ──
+  static Future<Map<String, dynamic>> verifyProperty(String propertyId) async {
+     try {
+       final res = await _aiClient.functions.invoke(
+         'verify-property',
+         headers: _aiHeaders(),
+         body: {'property_id': propertyId}
+       );
+       return Map<String, dynamic>.from(res.data);
+     } catch (e) {
+       return {'verified': false, 'score': 0, 'feedback': e.toString()};
+     }
+  }
+}
