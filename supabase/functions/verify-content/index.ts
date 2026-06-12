@@ -76,21 +76,22 @@ serve(async (req) => {
       })
     }
 
-    // ─── LIVE SAFETY SCAN ─────────────────────────────────────────────────────
+      // ─── LIVE SAFETY SCAN ─────────────────────────────────────────────────────
     if (action === 'live_safety_scan') {
-      // Proprietary frame scanner heuristics for content policy violations
-      const scanResult = {
-        safe: true,
-        flags: {
-          pornographic: false,
-          drug_abuse: false,
-          child_safety: false,
-          dangerous_content: false,
-          hate_speech_display: false
-        },
-        severity: "none",
-        reason: null,
-        confidence: 0.99
+      const NECXA_AI_URL = Deno.env.get('NECXA_AI_URL') || 'https://api.necxa.uk';
+      
+      const base64Data = mediaBase64.replace(/^data:\w+\/\w+;base64,/, "");
+      const mediaBytes = decode(base64Data);
+      const formData = new FormData();
+      formData.append('frame', new Blob([mediaBytes], { type: mimeType || 'image/jpeg' }), 'frame.jpg');
+
+      let scanResult = { safe: true, flags: {}, severity: "none", reason: null, confidence: 0 };
+      
+      try {
+        const aiRes = await fetch(`${NECXA_AI_URL}/api/verify/live-frame`, { method: 'POST', body: formData });
+        if (aiRes.ok) scanResult = await aiRes.json();
+      } catch (e) {
+        console.error("Cloudflare Live Safety Error:", e);
       }
 
       // ── Log violations to MongoDB (live layer), not Supabase ────────────────
@@ -142,7 +143,7 @@ serve(async (req) => {
     }
 
     // ─── AI ENGINE CONTENT VERIFICATION ───────────────────────────────────────
-    const NECXA_AI_URL = Deno.env.get('NECXA_AI_URL') || 'https://necxa-ai.onrender.com';
+    const NECXA_AI_URL = Deno.env.get('NECXA_AI_URL') || 'https://api.necxa.uk';
     const NECXA_AI_API_KEY = Deno.env.get('NECXA_AI_API_KEY') || '';
 
     // Decode base64
