@@ -1,7 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 // ─── Live Safety Scan Result ──────────────────────────────────────────────────
 class LiveSafetyResult {
@@ -238,6 +241,7 @@ class NecxaAI {
     required String mimeType,
     String? textContent,
     String? userId,
+    List<String>? videoFrames,
   }) async {
     final session = Supabase.instance.client.auth.currentSession;
     try {
@@ -250,11 +254,80 @@ class NecxaAI {
           'mimeType': mimeType,
           if (textContent != null) 'textContent': textContent,
           'userId': session?.user.id ?? userId ?? 'flutter_user',
+          if (videoFrames != null) 'videoFrames': videoFrames,
         }
       );
       return Map<String, dynamic>.from(res.data);
     } catch (e) {
       return {'status': 'error', 'description': e.toString()};
+    }
+  }
+
+  // Extract 5 random video frames as JPEG thumbnails to moderator API
+  static Future<List<String>> extractVideoFrames(File videoFile) async {
+    final List<String> base64Frames = [];
+    try {
+      final controller = VideoPlayerController.file(videoFile);
+      await controller.initialize();
+      final durationMs = controller.value.duration.inMilliseconds;
+      await controller.dispose();
+
+      final random = math.Random();
+      for (int i = 0; i < 5; i++) {
+        // Pick random timestamps, leaving 100ms padding
+        final timeMs = durationMs > 1000 ? random.nextInt(durationMs - 500) + 100 : 0;
+        final uint8list = await VideoThumbnail.thumbnailData(
+          video: videoFile.path,
+          imageFormat: ImageFormat.JPEG,
+          timeMs: timeMs,
+          quality: 45,
+          maxWidth: 400,
+        );
+        if (uint8list != null) {
+          base64Frames.add(base64Encode(uint8list));
+        }
+      }
+    } catch (e) {
+      debugPrint("Error extracting video frames: $e");
+    }
+    return base64Frames;
+  }
+
+  // ── UNIVERSAL MEDIA FILE MODERATION ──
+  static Future<Map<String, dynamic>> verifyMediaFile({
+    required File file,
+    required String type, // 'photo', 'video', 'audio'
+    String? textContent,
+    String? userId,
+  }) async {
+    if (type == 'video') {
+      final frames = await extractVideoFrames(file);
+      return verifyContent(
+        type: 'video',
+        mediaBase64: '',
+        mimeType: 'video/mp4',
+        textContent: textContent,
+        userId: userId,
+        videoFrames: frames,
+      );
+    } else if (type == 'audio' || type == 'music') {
+      final b64 = await fileToBase64(file);
+      return verifyContent(
+        type: 'audio',
+        mediaBase64: b64,
+        mimeType: 'audio/mpeg',
+        textContent: textContent,
+        userId: userId,
+      );
+    } else {
+      final b64 = await fileToBase64(file);
+      return verifyContent(
+        type: 'photo',
+        mediaBase64: b64,
+        mimeType: 'image/jpeg',
+        textContent: textContent,
+        userId: userId,
+      );
     }
   }
 

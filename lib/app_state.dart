@@ -842,16 +842,26 @@ class AppState extends ChangeNotifier {
 
     // 2. AI Verification Node
     Map<String, dynamic> aiReport;
-    final b64 = pickedMedia != null ? await NecxaAI.fileToBase64(pickedMedia!) : '';
-
-    if (data['type'] == 'post') {
-      aiReport = await NecxaAI.verifyContent(
-        type: 'post',
-        mediaBase64: b64,
-        mimeType: 'image/jpeg',
-        textContent: data['title'],
+    if (pickedMedia != null) {
+      final isVideo = pickedMedia!.path.toLowerCase().endsWith('.mp4') || pickedMedia!.path.toLowerCase().endsWith('.mov');
+      final isAudio = pickedMedia!.path.toLowerCase().endsWith('.mp3') || pickedMedia!.path.toLowerCase().endsWith('.m4a') || pickedMedia!.path.toLowerCase().endsWith('.wav');
+      
+      final mediaType = isVideo ? 'video' : (isAudio ? 'audio' : 'photo');
+      aiReport = await NecxaAI.verifyMediaFile(
+        file: pickedMedia!,
+        type: mediaType,
+        textContent: data['title'] ?? data['description'],
         userId: user!.id,
       );
+    } else {
+      aiReport = await NecxaAI.verifyContent(
+        type: 'text',
+        mediaBase64: '',
+        mimeType: 'text/plain',
+        textContent: data['title'] ?? data['description'],
+        userId: user!.id,
+      );
+    }
       // ── COMMUNITY V2: NEURAL SYNDICATION ──
       await social.createPost(user!.id, {
         ...data,

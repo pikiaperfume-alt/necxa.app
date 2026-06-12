@@ -146,30 +146,38 @@ serve(async (req) => {
     const NECXA_AI_URL = Deno.env.get('NECXA_AI_URL') || 'https://api.necxa.uk';
     const NECXA_AI_API_KEY = Deno.env.get('NECXA_AI_API_KEY') || '';
 
-    // Decode base64
-    const base64Data = mediaBase64.replace(/^data:\w+\/\w+;base64,/, "");
-    const mediaBytes = decode(base64Data);
     const formData = new FormData();
-
     let endpoint = '';
     
     if (type === 'video') {
-      formData.append('video', new Blob([mediaBytes], { type: mimeType || 'video/mp4' }), 'video.mp4');
       endpoint = `${NECXA_AI_URL}/api/verify/video`;
+      const videoFrames = payload.videoFrames;
+      if (videoFrames && Array.isArray(videoFrames)) {
+        for (let i = 0; i < videoFrames.length; i++) {
+          const frameBase64 = videoFrames[i].replace(/^data:\w+\/\w+;base64,/, "");
+          const frameBytes = decode(frameBase64);
+          formData.append(`frame${i}`, new Blob([frameBytes], { type: 'image/jpeg' }), `frame${i}.jpg`);
+        }
+      } else if (mediaBase64) {
+        const base64Data = mediaBase64.replace(/^data:\w+\/\w+;base64,/, "");
+        const mediaBytes = decode(base64Data);
+        formData.append('videoFrame', new Blob([mediaBytes], { type: mimeType || 'image/jpeg' }), 'frame.jpg');
+      } else {
+        throw new Error("Missing video frame payloads for video verification");
+      }
     } else if (type === 'music' || type === 'audio') {
+      if (!mediaBase64) throw new Error("Missing audio payload");
+      const base64Data = mediaBase64.replace(/^data:\w+\/\w+;base64,/, "");
+      const mediaBytes = decode(base64Data);
       formData.append('audio', new Blob([mediaBytes], { type: mimeType || 'audio/mpeg' }), 'audio.mp3');
       endpoint = `${NECXA_AI_URL}/api/verify/audio`;
     } else {
-      // Photo / other generic fallback
-      const contentScore = Math.floor(82 + Math.random() * 16);
-      const contentVerified = contentScore >= 70;
-      return new Response(JSON.stringify({
-        status: contentVerified ? 'success' : 'failed',
-        verified: contentVerified,
-        feedback: `Necxa Cognitive Scanner: ${type} content passed authenticity validation (score: ${contentScore}/100).`,
-        reasoning: "Heuristic scan completed.",
-        score: contentScore,
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      // Photo / other generic content
+      if (!mediaBase64) throw new Error("Missing photo payload");
+      const base64Data = mediaBase64.replace(/^data:\w+\/\w+;base64,/, "");
+      const mediaBytes = decode(base64Data);
+      formData.append('photo', new Blob([mediaBytes], { type: mimeType || 'image/jpeg' }), 'photo.jpg');
+      endpoint = `${NECXA_AI_URL}/api/verify/photo`;
     }
 
     const aiRes = await fetch(endpoint, {
@@ -182,16 +190,16 @@ serve(async (req) => {
     const aiData = await aiRes.json();
     if (!aiData.success) throw new Error(`Content Verification Failed: ${aiData.error}`);
 
-    const isVerified = type === 'video' ? aiData.videoResult.verified : aiData.audioResult.verified;
-    const aiScore = type === 'video' ? aiData.videoResult.score * 100 : aiData.audioResult.score * 100;
+    const isVerified = aiData.result.verified;
+    const aiScore = aiData.result.score;
     
     return new Response(JSON.stringify({
       status: isVerified ? 'success' : 'failed',
       verified: isVerified,
       feedback: `Necxa AI Engine: Moderation complete. Verified: ${isVerified}`,
-      reasoning: "AI analysis completed successfully.",
+      reasoning: aiData.result.reasoning || "AI analysis completed successfully.",
       score: aiScore,
-      details: type === 'video' ? aiData.videoResult : aiData.audioResult
+      details: aiData.result
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
   } catch (err: any) {
