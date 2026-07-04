@@ -1,1 +1,9 @@
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - "node_modules/**"
+    - "scratch/**"
+    - "plugins/**"
+    - "build/**"
+    - ".dart_tool/**"

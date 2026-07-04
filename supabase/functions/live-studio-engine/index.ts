@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { MongoClient } from "npm:mongodb";
+import { RtcTokenBuilder, RtcRole } from "npm:agora-access-token";
 
 const AGORA_APP_ID = Deno.env.get("AGORA_APP_ID") ?? "";
 const AGORA_APP_CERTIFICATE = Deno.env.get("AGORA_APP_CERTIFICATE") ?? "";
@@ -75,7 +76,29 @@ serve(async (req) => {
         })
       }
 
-      const token = "TOKEN_GENERATED_SECURELY"; 
+      if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+        return new Response(JSON.stringify({ error: 'Missing Agora App Configuration' }), { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        })
+      }
+
+      // Generate actual Agora RTC Token (Valid for 24 hours)
+      const expirationTimeInSeconds = 3600 * 24;
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+      // Use UID 0 for publisher (Agora will auto-assign a UID on the client side if 0 is passed)
+      const uid = 0; 
+
+      const token = RtcTokenBuilder.buildTokenWithUid(
+        AGORA_APP_ID,
+        AGORA_APP_CERTIFICATE,
+        channelId,
+        uid,
+        RtcRole.PUBLISHER,
+        privilegeExpiredTs
+      );
 
       return new Response(JSON.stringify({ 
         token, 

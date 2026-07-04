@@ -15,9 +15,12 @@ class _AiChatModalState extends State<AiChatModal> {
   final TextEditingController _msgCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
 
+  String _selectedLang = 'English';
+  final List<String> _languages = ['English', 'Swahili', 'Luganda', 'French', 'Arabic', 'Somali', 'Amharic'];
+
   void _send() {
     if (_msgCtrl.text.trim().isEmpty) return;
-    widget.state.askNecxa(_msgCtrl.text.trim());
+    widget.state.askNecxa(_msgCtrl.text.trim(), language: _selectedLang);
     _msgCtrl.clear();
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollCtrl.hasClients) {
@@ -110,6 +113,37 @@ class _AiChatModalState extends State<AiChatModal> {
           Text('HOW CAN I ASSIST YOU?', style: syne(sz: 12, w: FontWeight.w800, ls: 4, c: Colors.white24)),
           const SizedBox(height: 8),
           Text('Verification • Listings • Market Insights', style: dm(sz: 10, c: Colors.white12)),
+          const SizedBox(height: 24),
+          // Language Selector
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(.05),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedLang,
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.white38),
+                dropdownColor: C.bg,
+                style: dm(sz: 12, c: Colors.white70),
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _selectedLang = newValue;
+                    });
+                  }
+                },
+                items: _languages.map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
         ],
       ),
     );

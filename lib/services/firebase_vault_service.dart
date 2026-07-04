@@ -47,6 +47,64 @@ class FirebaseVaultService {
     }
   }
 
+  /// Atomic transaction for eCommerce purchases using wallet balance
+  Future<Map<String, dynamic>> processShopPurchase({
+    required String orderId,
+    required String listingId,
+    required String vendorId,
+    required String sku,
+    required double itemsTotalUgx,
+    required double deliveryFeeUgx,
+    required int quantity,
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('processShopPurchase');
+      final result = await callable.call({
+        'orderId': orderId,
+        'listingId': listingId,
+        'vendorId': vendorId,
+        'sku': sku,
+        'itemsTotalUgx': itemsTotalUgx,
+        'deliveryFeeUgx': deliveryFeeUgx,
+        'quantity': quantity,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      debugPrint('🔥 Firebase Vault: Shop Purchase Failure: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Initiates a Pesapal Checkout Session
+  Future<Map<String, dynamic>> initiatePesapalPayment({
+    required double amount,
+    required String currency,
+    required String description,
+    required String type, // 'buy_coins' or 'unlock_listing'
+    String? packId,
+    String? listingId,
+    String? email,
+    String? phone,
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('initiatePesapalPayment');
+      final result = await callable.call({
+        'amount': amount,
+        'currency': currency,
+        'description': description,
+        'type': type,
+        'packId': packId,
+        'listingId': listingId,
+        'email': email,
+        'phone': phone,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      debugPrint('🔥 Firebase Vault: Pesapal Init Failure: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
   /// Atomic transaction for withdrawing fiat to mobile money or bank via Cloud Functions
   Future<Map<String, dynamic>> withdrawFiat({
     required String userId,
@@ -82,6 +140,50 @@ class FirebaseVaultService {
       final result = await callable.call();
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ── Escrow Transactions ──────────────────────────────────────────────────────
+
+  /// Holds funds in escrow for a specific transaction (e.g., transport, marketplace)
+  Future<Map<String, dynamic>> holdInEscrow({
+    required String userId,
+    required double amount,
+    required String transactionId,
+    required String contextType, // 'transport', 'marketplace'
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('holdInEscrow');
+      final result = await callable.call({
+        'userId': userId,
+        'amount': amount,
+        'transactionId': transactionId,
+        'contextType': contextType,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      debugPrint('🔥 Firebase Vault: Escrow Hold Failure: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Releases funds from escrow to the recipient
+  Future<Map<String, dynamic>> releaseEscrow({
+    required String transactionId,
+    required String recipientId,
+    required double amount,
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('releaseEscrow');
+      final result = await callable.call({
+        'transactionId': transactionId,
+        'recipientId': recipientId,
+        'amount': amount,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      debugPrint('🔥 Firebase Vault: Escrow Release Failure: $e');
       return {'success': false, 'message': e.toString()};
     }
   }

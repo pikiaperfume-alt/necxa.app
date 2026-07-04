@@ -248,7 +248,16 @@ class CreatorScreen extends StatelessWidget {
         state: state,
         onSend: (emoji, name, price, fee) {
           Navigator.pop(context);
-          state.sendGift(emoji, name, price, fee);
+          final cType = p.type == 'live' ? 'live_stream' : 'creator_post';
+          state.sendGift(
+            emoji, 
+            name, 
+            price, 
+            fee, 
+            receiverId: p.creatorId, 
+            contextType: cType, 
+            contextId: p.id
+          );
         },
       ),
     );

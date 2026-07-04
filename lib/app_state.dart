@@ -651,8 +651,21 @@ class AppState extends ChangeNotifier {
 
   Future<void> depositFiat(double amt) async {
     if (user == null) return;
-    await vault.deposit(user!.id, amt);
-    await _syncVault();
+    
+    final result = await firebaseVault.initiatePesapalPayment(
+      amount: amt,
+      currency: 'UGX',
+      description: 'Wallet Deposit',
+      type: 'fiat_deposit',
+      email: myProfile?['email'] ?? user!.email,
+      phone: myProfile?['phone_number'],
+    );
+    
+    if (result['success'] == true) {
+      await _syncVault();
+    } else {
+      throw Exception(result['message'] ?? 'Deposit initiation failed');
+    }
   }
 
   double currentForexRate = 3800.0;
@@ -840,7 +853,7 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    // 2. AI Verification Node
+    // 2. AI Verification Node (Cloudflare Worker v2 — direct edge inference)
     Map<String, dynamic> aiReport;
 
     if (data['type'] == 'post') {
@@ -848,13 +861,25 @@ class AppState extends ChangeNotifier {
         final isVideo = pickedMedia!.path.toLowerCase().endsWith('.mp4') || pickedMedia!.path.toLowerCase().endsWith('.mov');
         final isAudio = pickedMedia!.path.toLowerCase().endsWith('.mp3') || pickedMedia!.path.toLowerCase().endsWith('.m4a') || pickedMedia!.path.toLowerCase().endsWith('.wav');
         
-        final mediaType = isVideo ? 'video' : (isAudio ? 'audio' : 'photo');
-        aiReport = await NecxaAI.verifyMediaFile(
-          file: pickedMedia!,
-          type: mediaType,
-          textContent: data['title'] ?? data['description'],
-          userId: user!.id,
-        );
+        if (isVideo) {
+          // Extract frames and send to Worker's multi-frame video moderator
+          final framePaths = await NecxaAI.extractVideoFrames(pickedMedia!);
+          // Convert base64 frames back to temp files for the Worker HTTP upload
+          final tempDir = await Directory.systemTemp.createTemp('video_frames_');
+          final frameFiles = <File>[];
+          for (int i = 0; i < framePaths.length; i++) {
+            final f = File('${tempDir.path}/frame_$i.jpg');
+            await f.writeAsBytes(base64Decode(framePaths[i]));
+            frameFiles.add(f);
+          }
+          aiReport = await NecxaAI.verifyVideoWorker(frameFiles);
+          // Clean up temp files
+          try { await tempDir.delete(recursive: true); } catch (_) {}
+        } else if (isAudio) {
+          aiReport = await NecxaAI.verifyAudioWorker(pickedMedia!);
+        } else {
+          aiReport = await NecxaAI.verifyPhotoWorker(pickedMedia!);
+        }
       } else {
         aiReport = await NecxaAI.verifyContent(
           type: 'text',
@@ -870,15 +895,23 @@ class AppState extends ChangeNotifier {
         'community_id': data['community_id'] ?? 'global_node_01', 
       });
     } else {
-      final b64 = pickedMedia != null ? await NecxaAI.fileToBase64(pickedMedia!) : '';
-      aiReport = await NecxaAI.createVerifiedListing(
-        title: data['title'],
-        description: data['description'] ?? '',
-        price: double.tryParse(data['price']?.toString() ?? '0') ?? 0,
-        type: data['category'] ?? 'apartment',
-        imageBase64: b64,
-        userId: user!.id,
-      );
+      // Listing: use Worker to verify listing photo, then Supabase to persist
+      if (pickedMedia != null) {
+        aiReport = await NecxaAI.verifyListingPhotoWorker(
+          photo: pickedMedia!,
+          title: data['title'] ?? 'Property',
+        );
+      } else {
+        final b64 = await NecxaAI.fileToBase64(pickedMedia ?? File(''));
+        aiReport = await NecxaAI.createVerifiedListing(
+          title: data['title'],
+          description: data['description'] ?? '',
+          price: double.tryParse(data['price']?.toString() ?? '0') ?? 0,
+          type: data['category'] ?? 'apartment',
+          imageBase64: b64,
+          userId: user!.id,
+        );
+      }
       await social.createListing(user!.id, data, aiResult: aiReport);
     }
 
@@ -1185,20 +1218,53 @@ class AppState extends ChangeNotifier {
   }
 
   // ── Gift Engine ──
-  void sendGift(String emoji, String name, int price, int fee) {
+  Future<void> sendGift(String emoji, String name, int price, int fee, {String? receiverId, String? contextType, String? contextId}) async {
     giftEmoji = emoji; giftName = name; giftFee = fee;
     showGiftFloat = true;
-    wallet = (wallet - price).clamp(0, wallet);
+    
+    // Optimistic UI update for legacy widgets using 'wallet' (coinBalance)
+    if (userWallet != null && userWallet!.coinBalance >= price) {
+      userWallet = Wallet(
+        id: userWallet!.id,
+        userId: userWallet!.userId,
+        coinBalance: userWallet!.coinBalance - price,
+        fiatBalance: userWallet!.fiatBalance,
+        escrowBalance: userWallet!.escrowBalance,
+        stakedBalance: userWallet!.stakedBalance,
+        totalEarned: userWallet!.totalEarned,
+        totalSpent: userWallet!.totalSpent,
+        totalCommissionEarned: userWallet!.totalCommissionEarned,
+        dailyWithdrawalLimit: userWallet!.dailyWithdrawalLimit,
+        monthlyWithdrawalLimit: userWallet!.monthlyWithdrawalLimit,
+        isFrozen: userWallet!.isFrozen,
+        freezeReason: userWallet!.freezeReason,
+        frozenAt: userWallet!.frozenAt,
+        createdAt: userWallet!.createdAt,
+        updatedAt: DateTime.now(),
+      );
+    }
     notify();
-    // Persist to backend asynchronously
+
+    // Persist to backend asynchronously via Firebase Finance
     if (user != null) {
-      Supabase.instance.client.from('gift_transactions').insert({
-        'sender_id': user!.id,
-        'emoji': emoji,
-        'name': name,
-        'price': price,
-        'fee': fee,
-      }).then((_) {}).catchError((e) => debugPrint('Gift persist error: $e'));
+      try {
+        final result = await fbGifting.sendGift(
+          senderId: user!.id,
+          receiverId: receiverId ?? 'platform_recipient', // default if missing from UI
+          giftItemId: name.toLowerCase(),
+          ncxAmount: price,
+          contextType: contextType ?? 'direct',
+          contextId: contextId ?? 'general_feed',
+        );
+
+        if (result.success) {
+          await _syncVault(); // Resync real balances from Firebase
+        } else {
+          debugPrint('🔥 Firebase Gifting failed: ${result.message}');
+        }
+      } catch (e) {
+        debugPrint('🔥 Gift persist error: $e');
+      }
     }
   }
 
@@ -1994,7 +2060,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> askNecxa(String query) async {
+  Future<void> askNecxa(String query, {String language = 'English'}) async {
     isAiThinking = true; notify();
     try {
       final userMsg = ChatMessage(
@@ -2013,9 +2079,12 @@ class AppState extends ChangeNotifier {
         'isVerifying': isVerifying,
         'verificationStep': verificationSubStep,
         'user_name': myProfile?['full_name'] ?? 'Necxa User',
+        'language': language,
       };
 
-      final res = await NecxaAI.askNexca(query, context: contextData);
+      // Prefer the Cloudflare Worker (Llama 3.1 — zero-cost edge inference).
+      // Falls back to Supabase necxa-chat automatically if the worker is down.
+      final res = await NecxaAI.askNecxaWorker(query);
       
       final aiMsg = ChatMessage(
         id: 'a-${DateTime.now().millisecondsSinceEpoch}', 
@@ -2160,9 +2229,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _releaseEscrow(String orderId) async {
-    // Escrow Release logic
-    // 1. Get the order details (amount and driver_id)
-    // 2. Add amount to driver's wallet
     try {
       final orderRes = await Supabase.instance.client
           .from('transport_orders')
@@ -2173,20 +2239,17 @@ class AppState extends ChangeNotifier {
       final double price = (orderRes['price'] as num).toDouble();
       final String driverId = orderRes['driver_id'];
 
-      // Add to driver's wallet
-      // Note: We'd typically use an RPC or server-side function for this
-      final walletRes = await Supabase.instance.client
-          .from('wallets')
-          .select()
-          .eq('user_id', driverId)
-          .maybeSingle();
+      // 🔥 FIREBASE: Release escrow to the driver's wallet securely
+      final result = await firebaseVault.releaseEscrow(
+        transactionId: orderId,
+        recipientId: driverId,
+        amount: price,
+      );
 
-      if (walletRes != null) {
-        final double currentBalance = (walletRes['fiat_balance'] as num).toDouble();
-        await Supabase.instance.client
-            .from('wallets')
-            .update({'fiat_balance': currentBalance + price})
-            .eq('user_id', driverId);
+      if (result['success'] == true) {
+        debugPrint('🔥 Escrow Successfully Released to Driver: $driverId');
+      } else {
+        throw Exception(result['message'] ?? 'Failed to release escrow');
       }
     } catch (e) {
       debugPrint('Escrow Release Error: $e');
@@ -2262,12 +2325,25 @@ class AppState extends ChangeNotifier {
         throw Exception('Insufficient wallet balance. Please top up to book transport.');
       }
 
-      // 2. Create Order in Escrow Style (Deduct balance immediately)
-      // For now, we simulate the escrow by local deduction OR a Supabase RPC
-      // Real implementation would use a database transaction or trigger
+      // 2. Create Order in Escrow Style
+      final transactionId = _generateUuidv4();
+
+      // 🔥 FIREBASE: Hold funds in escrow
+      final escrowRes = await firebaseVault.holdInEscrow(
+        userId: user!.id,
+        amount: price,
+        transactionId: transactionId,
+        contextType: 'transport',
+      );
+
+      if (escrowRes['success'] != true) {
+        throw Exception(escrowRes['message'] ?? 'Failed to secure funds in escrow.');
+      }
+
+      await _syncVault(); // Sync wallet to reflect escrow balance
       
       final orderData = {
-        'id': _generateUuidv4(), // Client-generated deterministic UUID
+        'id': transactionId,
         'user_id': user!.id,
         'driver_id': driver.id,
         'pickup_location': pickup,

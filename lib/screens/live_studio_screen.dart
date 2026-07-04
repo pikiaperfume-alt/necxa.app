@@ -252,16 +252,14 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
       final file = File(path);
       if (!file.existsSync()) return;
 
-      // 1. Liveness Check
+      // 1. Liveness Check (Supabase — biometric composite model)
       final idResult = await NecxaAI.verifyID(file, userId: widget.state.user?.id);
       debugPrint('🛡️ Face Pulse: verified=${idResult['verified']}, score=${idResult['score']}');
 
-      // 2. Strict Content Safety Scan
-      final safetyResult = await NecxaAI.scanLiveFrame(
-        file,
-        channelId: widget.channelName,
-        streamerId: widget.state.user?.id,
-      );
+      // 2. Strict Content Safety Scan via Cloudflare Worker (Llama 3.2 Vision).
+      // Falls back to safe() on any network error — stream is never killed
+      // on connectivity issues alone.
+      final safetyResult = await NecxaAI.scanLiveFrameWorker(file);
 
       // Clean up temp file immediately.
       try { file.deleteSync(); } catch (_) {}

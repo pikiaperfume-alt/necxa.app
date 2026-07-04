@@ -69,8 +69,9 @@ async function ensureGiftCatalogue() {
 /**
  * recordLedgerEntry
  * Creates an immutable record of balance changes for independent reconciliation.
+ * Synced to both Firestore (legacy/fast read) and Supabase (cryptographic ledger).
  */
-async function recordLedgerEntry(userId, { type, amount, currency, direction, metadata }, tx = null) {
+async function recordLedgerEntry(userId, { type, amount, currency, direction, metadata, reference_id }, tx = null) {
   const ref = db.collection("ledger_entries").doc();
   const entry = {
     user_id: userId,
@@ -87,6 +88,55 @@ async function recordLedgerEntry(userId, { type, amount, currency, direction, me
     tx.set(ref, entry);
   } else {
     await ref.set(entry);
+  }
+
+// dual-write mapper
+  const typeMap = {
+    "buy_coins": "COIN_PURCHASE",
+    "listing_unlock": "LISTING_UNLOCK",
+    "gift_sent": "GIFT_SENT",
+    "gift_received": "GIFT_RECEIVED",
+    "gift_fee": "PLATFORM_FEE",
+    "withdraw_fiat": "WITHDRAWAL",
+    "liquidation_in": "WITHDRAWAL",
+    "liquidation_out": "WITHDRAWAL",
+    "shop_purchase": "SHOP_PURCHASE",
+    "delivery_fee": "DELIVERY_FEE",
+    "escrow_deposit": "ESCROW_DEPOSIT",
+    "escrow_release": "ESCROW_RELEASE",
+    "escrow_refund": "ESCROW_REFUND"
+  };
+  const supabaseType = typeMap[type] || type.toUpperCase();
+
+  // Dual-Write to Supabase Immutable Ledger
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && supabaseKey) {
+      axios.post(`${supabaseUrl}/rest/v1/immutable_financial_ledger`, {
+        user_id: userId,
+        entry_type: supabaseType,
+        amount: Math.round(amount), // Ensure integer for bigint
+        currency: currency,
+        direction: direction,
+        balance_after: 0, // Supabase calculates this via trigger in the future, or we just supply 0 for now
+        reference_id: reference_id || null,
+        metadata: { ...metadata, firestore_audit_id: ref.id }
+      }, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        }
+      }).catch(err => {
+        console.error("Supabase Ledger Sync Error:", err.response?.data || err.message);
+      });
+    } else {
+      console.warn("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing. Skipping Supabase ledger sync.");
+    }
+  } catch (e) {
+    console.error("Failed to initiate Supabase sync:", e.message);
   }
 }
 
@@ -139,6 +189,190 @@ exports.initPaymentSystem = functions.https.onCall(async (data, context) => {
 
   await db.collection("system_config").doc("payment_methods").set(initialMethods);
   return { success: true, message: "Payment system initialized with default methods." };
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHOP E-COMMERCE & LOGISTICS PAYMENT (INTERNAL WALLET)
+// ═══════════════════════════════════════════════════════════════════════════
+
+exports.processShopPurchase = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+  const userId = context.auth.uid;
+  const { orderId, listingId, vendorId, sku, itemsTotalUgx, deliveryFeeUgx, quantity } = data;
+
+  if (!orderId || !listingId || !vendorId || itemsTotalUgx == null || deliveryFeeUgx == null) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing required shop parameters.");
+  }
+
+  const rates = await getCachedRates();
+  const ugxPerNcx = NCX_PRICE_USD * rates.USD_TO_UGX; // ~100 UGX
+  const ncxItemsCost = Math.ceil(itemsTotalUgx / ugxPerNcx);
+  const ncxDeliveryCost = Math.ceil(deliveryFeeUgx / ugxPerNcx);
+  const totalNcxCost = ncxItemsCost + ncxDeliveryCost;
+
+  return await db.runTransaction(async (tx) => {
+    const walletRef = db.collection("wallets").doc(userId);
+    const walletDoc = await tx.get(walletRef);
+
+    if (!walletDoc.exists) throw new functions.https.HttpsError("not-found", "Wallet not found.");
+    const currentBalance = walletDoc.data().coin_balance || 0;
+
+    if (currentBalance < totalNcxCost) {
+      throw new functions.https.HttpsError("resource-exhausted", "Insufficient NCX balance for shop purchase.");
+    }
+
+    // Deduct total balance
+    tx.update(walletRef, {
+      coin_balance: admin.firestore.FieldValue.increment(-totalNcxCost)
+    });
+
+    const vendorPlatformFee = Math.floor(ncxItemsCost * 0.03);
+    const vendorNetEarned = ncxItemsCost - vendorPlatformFee;
+
+    // Credit Vendor for the item (minus 3% platform fee)
+    const vendorWalletRef = db.collection("wallets").doc(vendorId);
+    tx.set(vendorWalletRef, {
+      coin_balance: admin.firestore.FieldValue.increment(vendorNetEarned)
+    }, { merge: true });
+
+    // Mark Order Paid and save NCX costs for future driver payout
+    const orderRef = db.collection("orders").doc(orderId);
+    tx.update(orderRef, {
+      status: "paid",
+      payment_method: "balance",
+      items_ncx: ncxItemsCost,
+      delivery_ncx: ncxDeliveryCost,
+      paid_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 1. Ledger Entry for Shop Purchase (Goods)
+    await recordLedgerEntry(userId, {
+      type: "shop_purchase",
+      amount: ncxItemsCost,
+      currency: "NCX",
+      direction: "out",
+      reference_id: orderId,
+      metadata: { sku: sku, listing_id: listingId, quantity, ugx_value: itemsTotalUgx }
+    }, tx);
+
+    await recordLedgerEntry(vendorId, {
+      type: "shop_purchase",
+      amount: vendorNetEarned,
+      currency: "NCX",
+      direction: "in",
+      reference_id: orderId,
+      metadata: { sku: sku, listing_id: listingId, quantity, ugx_value: itemsTotalUgx, fee_deducted: vendorPlatformFee }
+    }, tx);
+
+    if (vendorPlatformFee > 0) {
+      await recordLedgerEntry("platform_revenue", {
+        type: "gift_fee", // Translates to PLATFORM_FEE
+        amount: vendorPlatformFee,
+        currency: "NCX",
+        direction: "in",
+        reference_id: orderId,
+        metadata: { source: "shop_vendor_commission", sku: sku }
+      }, tx);
+    }
+
+    // 2. Ledger Entry for Delivery/Logistics Trip
+    if (ncxDeliveryCost > 0) {
+      const tripId = `TRIP-${orderId.split('-')[1] || Date.now()}`;
+      await recordLedgerEntry(userId, {
+        type: "delivery_fee",
+        amount: ncxDeliveryCost,
+        currency: "NCX",
+        direction: "out",
+        reference_id: orderId,
+        metadata: { trip_id: tripId, ugx_value: deliveryFeeUgx }
+      }, tx);
+      
+      // Update order with trip ID
+      tx.update(orderRef, { trip_id: tripId });
+    }
+
+    return { success: true, message: "Shop purchase completed successfully." };
+  });
+});
+
+exports.completeDeliveryTrip = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+  const driverId = context.auth.uid;
+  const { orderId } = data;
+
+  if (!orderId) throw new functions.https.HttpsError("invalid-argument", "Missing orderId.");
+
+  return await db.runTransaction(async (tx) => {
+    const orderRef = db.collection("orders").doc(orderId);
+    const orderDoc = await tx.get(orderRef);
+
+    if (!orderDoc.exists) throw new functions.https.HttpsError("not-found", "Order not found.");
+    const orderData = orderDoc.data();
+
+    if (orderData.driver_id !== driverId) {
+      throw new functions.https.HttpsError("permission-denied", "You are not assigned to this trip.");
+    }
+    if (orderData.driver_paid) {
+      throw new functions.https.HttpsError("already-exists", "Driver has already been paid for this trip.");
+    }
+    if (orderData.status !== "paid" && orderData.status !== "completed") {
+      throw new functions.https.HttpsError("failed-precondition", "Order must be paid before trip completion.");
+    }
+
+    // Determine the delivery value in NCX
+    let ncxDeliveryValue = orderData.delivery_ncx;
+    if (!ncxDeliveryValue && orderData.metadata?.delivery_ugx) {
+       // Convert UGX to NCX if paying via pesapal
+       const rates = await getCachedRates();
+       const ugxPerNcx = NCX_PRICE_USD * rates.USD_TO_UGX;
+       ncxDeliveryValue = Math.ceil(orderData.metadata.delivery_ugx / ugxPerNcx);
+    }
+    if (!ncxDeliveryValue) {
+       ncxDeliveryValue = 0; // fallback if no fee
+    }
+
+    // Calculate 4% Platform Fee
+    const platformFee = Math.floor(ncxDeliveryValue * 0.04);
+    const driverNetEarned = ncxDeliveryValue - platformFee;
+
+    if (driverNetEarned > 0) {
+      // Credit Driver
+      const driverWalletRef = db.collection("wallets").doc(driverId);
+      tx.set(driverWalletRef, {
+        coin_balance: admin.firestore.FieldValue.increment(driverNetEarned)
+      }, { merge: true });
+
+      // Record Ledger Entries
+      await recordLedgerEntry(driverId, {
+        type: "commission_payout", // translates to COMMISSION_PAYOUT
+        amount: driverNetEarned,
+        currency: "NCX",
+        direction: "in",
+        reference_id: orderId,
+        metadata: { trip_id: orderData.trip_id, source: "delivery", fee_deducted: platformFee }
+      }, tx);
+
+      if (platformFee > 0) {
+        await recordLedgerEntry("platform_revenue", {
+          type: "gift_fee", // translates to PLATFORM_FEE
+          amount: platformFee,
+          currency: "NCX",
+          direction: "in",
+          reference_id: orderId,
+          metadata: { trip_id: orderData.trip_id, source: "delivery_driver_commission" }
+        }, tx);
+      }
+    }
+
+    // Update order status
+    tx.update(orderRef, {
+      status: "completed",
+      driver_paid: true,
+      delivered_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, message: "Delivery completed and driver credited." };
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -871,5 +1105,344 @@ exports.necxaPaymentGateway = functions.https.onCall(async (data, context) => {
     }, 5000);
 
     return { success: true, payment_id: paymentId, status: "PROCESSING", message: "Payment initiated" };
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PESAPAL PAYMENT INTEGRATION (LIVE)
+// ═══════════════════════════════════════════════════════════════════════════
+const PESAPAL_BASE_URL = "https://pay.pesapal.com/v3";
+// To use secrets in v1, we configure runWith:
+const pesapalConfig = { secrets: ["PESAPAL_CONSUMER_KEY", "PESAPAL_CONSUMER_SECRET"] };
+
+/**
+ * Helper to get Pesapal Bearer Token
+ */
+async function getPesapalToken() {
+  const consumerKey = process.env.PESAPAL_CONSUMER_KEY;
+  const consumerSecret = process.env.PESAPAL_CONSUMER_SECRET;
+  
+  if (!consumerKey || !consumerSecret) {
+    throw new Error("Pesapal credentials not found in Secret Manager.");
+  }
+
+  const response = await axios.post(`${PESAPAL_BASE_URL}/api/Auth/RequestToken`, {
+    consumer_key: consumerKey,
+    consumer_secret: consumerSecret
+  }, {
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+  });
+
+  return response.data.token;
+}
+
+/**
+ * Helper to register IPN if not exists. 
+ * We will cache the IPN ID in Firestore to avoid registering it every time.
+ */
+async function getOrRegisterIPN(token) {
+  // Use Firebase hosting or functions URL
+  const ipnUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/pesapalWebhook`;
+  
+  const ipnConfigRef = db.collection("system_config").doc("pesapal_ipn");
+  const doc = await ipnConfigRef.get();
+  if (doc.exists && doc.data().ipn_id) {
+    return doc.data().ipn_id;
+  }
+
+  // Register IPN
+  const response = await axios.post(`${PESAPAL_BASE_URL}/api/URLSetup/RegisterIPN`, {
+    url: ipnUrl,
+    ipn_notification_type: "POST"
+  }, {
+    headers: { 
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json' 
+    }
+  });
+
+  if (response.data && response.data.ipn_id) {
+    await ipnConfigRef.set({ ipn_id: response.data.ipn_id, url: ipnUrl });
+    return response.data.ipn_id;
+  }
+  
+  throw new Error("Failed to register IPN with Pesapal.");
+}
+
+/**
+ * initiatePesapalPayment (Callable)
+ * Generates an order and returns the redirect URL for checkout.
+ */
+exports.initiatePesapalPayment = require("firebase-functions/v1").runWith(pesapalConfig).https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+
+  const { amount, currency = "UGX", description, type, packId, listingId, email, phone } = data;
+  const userId = context.auth.uid;
+  const userEmail = email || context.auth.token.email || "no-reply@necxa.uk";
+  
+  if (!amount || amount <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "Invalid amount.");
+  }
+
+  try {
+    const token = await getPesapalToken();
+    const ipnId = await getOrRegisterIPN(token);
+
+    // Create a local order reference
+    const orderRef = db.collection("pesapal_orders").doc();
+    const orderId = orderRef.id;
+
+    // Submit Order to Pesapal
+    const orderData = {
+      id: orderId,
+      currency: currency,
+      amount: parseFloat(amount).toFixed(2),
+      description: description || "Necxa Payment",
+      callback_url: `https://necxa.uk/payment-callback?orderId=${orderId}`,
+      notification_id: ipnId,
+      billing_address: {
+        email_address: userEmail,
+        phone_number: phone || "",
+        country_code: "UG",
+        first_name: "Necxa",
+        last_name: "User",
+        line_1: "Kampala",
+        city: "Kampala"
+      }
+    };
+
+    const response = await axios.post(`${PESAPAL_BASE_URL}/api/Transactions/SubmitOrderRequest`, orderData, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.data && response.data.redirect_url) {
+      const pesapalOrderTrackingId = response.data.order_tracking_id;
+
+      // Save pending order
+      await orderRef.set({
+        user_id: userId,
+        type: type, // 'buy_coins' or 'unlock_listing'
+        amount: amount,
+        currency: currency,
+        pack_id: packId || null,
+        listing_id: listingId || null,
+        status: "PENDING",
+        pesapal_tracking_id: pesapalOrderTrackingId,
+        redirect_url: response.data.redirect_url,
+        created_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      return {
+        success: true,
+        redirect_url: response.data.redirect_url,
+        order_tracking_id: pesapalOrderTrackingId,
+        order_id: orderId
+      };
+    } else {
+      throw new Error("Invalid response from Pesapal SubmitOrderRequest.");
+    }
+  } catch (error) {
+    console.error("Pesapal Initiate Error:", error.response?.data || error.message);
+    throw new functions.https.HttpsError("internal", "Failed to initiate payment with Pesapal.");
+  }
+});
+
+/**
+ * pesapalWebhook (HTTP)
+ * Receives IPNs from Pesapal, verifies the transaction, and fulfills the order.
+ */
+exports.pesapalWebhook = require("firebase-functions/v1").runWith(pesapalConfig).https.onRequest(async (req, res) => {
+  // Pesapal sends OrderTrackingId and OrderNotificationType in query params or body
+  const orderTrackingId = req.query.OrderTrackingId || req.body.OrderTrackingId;
+  const orderMerchantReference = req.query.OrderMerchantReference || req.body.OrderMerchantReference;
+  
+  if (!orderTrackingId) {
+    res.status(400).send("Missing OrderTrackingId");
+    return;
+  }
+
+  try {
+    const token = await getPesapalToken();
+    
+    // Check status with Pesapal
+    const statusRes = await axios.get(`${PESAPAL_BASE_URL}/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const paymentStatus = statusRes.data.payment_status_description; // "COMPLETED", "FAILED", "INVALID"
+    
+    // Find the order in Firestore
+    const orderRef = db.collection("pesapal_orders").doc(orderMerchantReference);
+    const orderDoc = await orderRef.get();
+
+    if (!orderDoc.exists) {
+      console.warn(`Pesapal IPN for unknown order: ${orderMerchantReference}`);
+      res.status(200).send({ status: "success", message: "Order not found locally, ignored." });
+      return;
+    }
+
+    if (orderDoc.data().status === "COMPLETED") {
+      res.status(200).send({ status: "success", message: "Already fulfilled." });
+      return;
+    }
+
+    // Update order status
+    await orderRef.update({
+      status: paymentStatus,
+      pesapal_status_code: statusRes.data.payment_status_code,
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Fulfill if COMPLETED
+    if (paymentStatus === "COMPLETED") {
+      const orderData = orderDoc.data();
+      const userId = orderData.user_id;
+
+      if (orderData.type === "buy_coins" && orderData.pack_id) {
+        // Find pack
+        const packDoc = await db.collection("coin_packs").doc(orderData.pack_id).get();
+        if (packDoc.exists) {
+          const ncxAmount = packDoc.data().ncx_amount;
+          
+          await db.runTransaction(async (tx) => {
+            const walletRef = db.collection("wallets").doc(userId);
+            const walletDoc = await tx.get(walletRef);
+            
+            if (walletDoc.exists) {
+              tx.update(walletRef, {
+                coin_balance: admin.firestore.FieldValue.increment(ncxAmount),
+                last_topup_at: admin.firestore.FieldValue.serverTimestamp()
+              });
+            } else {
+              tx.set(walletRef, {
+                user_id: userId,
+                coin_balance: ncxAmount,
+                fiat_balance: 0,
+                created_at: admin.firestore.FieldValue.serverTimestamp()
+              });
+            }
+
+            // Ledger
+            await recordLedgerEntry(userId, {
+              type: "buy_coins",
+              amount: ncxAmount,
+              currency: "NCX",
+              direction: "in",
+              metadata: { method: "pesapal", tracking_id: orderTrackingId }
+            }, tx);
+          });
+        }
+      } else if (orderData.type === "unlock_listing" && orderData.listing_id) {
+        // Unlock listing logic (similar to necxaPaymentGateway)
+        await db.runTransaction(async (tx) => {
+          const paymentRef = db.collection("listing_unlocks").doc(orderMerchantReference);
+          tx.set(paymentRef, {
+            buyer_id: userId,
+            listing_id: orderData.listing_id,
+            method: "PESAPAL",
+            amount: orderData.amount,
+            payment_status: "COMPLETED",
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          // Independent Audit
+          await recordLedgerEntry(userId, {
+            type: "listing_unlock",
+            amount: orderData.amount,
+            currency: "UGX",
+            direction: "out",
+            metadata: { listing_id: orderData.listing_id, method: "pesapal", tracking_id: orderTrackingId }
+          }, tx);
+        });
+      } else if (orderData.type === "shop_purchase" && orderData.order_id) {
+        // Shop E-commerce fulfillment logic
+        await db.runTransaction(async (tx) => {
+          const shopOrderRef = db.collection("orders").doc(orderData.order_id);
+          const shopOrderDoc = await tx.get(shopOrderRef);
+
+          if (shopOrderDoc.exists) {
+            tx.update(shopOrderRef, {
+              status: "paid",
+              payment_method: "pesapal",
+              paid_at: admin.firestore.FieldValue.serverTimestamp()
+            });
+            
+            const { items_ugx = orderData.amount, delivery_ugx = 0, vendor_id, sku, quantity, listing_id } = orderData;
+
+            const vendorPlatformFeeUgx = Math.floor(items_ugx * 0.03);
+            const vendorNetUgx = items_ugx - vendorPlatformFeeUgx;
+
+            // Goods Purchase Ledger Entry
+            if (items_ugx > 0) {
+              await recordLedgerEntry(userId, {
+                type: "shop_purchase",
+                amount: items_ugx,
+                currency: "UGX",
+                direction: "out",
+                reference_id: orderData.order_id,
+                metadata: { sku: sku, listing_id: listing_id, quantity: quantity, method: "pesapal", tracking_id: orderTrackingId }
+              }, tx);
+              
+              if (vendor_id) {
+                await recordLedgerEntry(vendor_id, {
+                  type: "shop_purchase",
+                  amount: vendorNetUgx,
+                  currency: "UGX",
+                  direction: "in",
+                  reference_id: orderData.order_id,
+                  metadata: { sku: sku, listing_id: listing_id, quantity: quantity, method: "pesapal", fee_deducted: vendorPlatformFeeUgx }
+                }, tx);
+
+                if (vendorPlatformFeeUgx > 0) {
+                  await recordLedgerEntry("platform_revenue", {
+                    type: "gift_fee", // Maps to PLATFORM_FEE
+                    amount: vendorPlatformFeeUgx,
+                    currency: "UGX",
+                    direction: "in",
+                    reference_id: orderData.order_id,
+                    metadata: { source: "shop_vendor_commission", sku: sku, method: "pesapal" }
+                  }, tx);
+                }
+              }
+            }
+
+            // Logistics Ledger Entry
+            if (delivery_ugx > 0) {
+              const tripId = `TRIP-${orderData.order_id.split('-')[1] || Date.now()}`;
+              tx.update(shopOrderRef, { trip_id: tripId });
+
+              await recordLedgerEntry(userId, {
+                type: "delivery_fee",
+                amount: delivery_ugx,
+                currency: "UGX",
+                direction: "out",
+                reference_id: orderData.order_id,
+                metadata: { trip_id: tripId, method: "pesapal", tracking_id: orderTrackingId }
+              }, tx);
+            }
+          }
+        });
+      }
+    }
+
+    // Acknowledge the IPN
+    res.status(200).json({
+      orderNotificationType: req.query.OrderNotificationType || req.body.OrderNotificationType,
+      orderTrackingId: orderTrackingId,
+      orderMerchantReference: orderMerchantReference,
+      status: 200
+    });
+
+  } catch (error) {
+    console.error("Pesapal Webhook Error:", error.message);
+    res.status(500).send("Webhook processing failed.");
   }
 });

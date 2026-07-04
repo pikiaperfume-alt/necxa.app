@@ -16,7 +16,7 @@ class LiveStreamingService {
   
   // MongoDB Configuration (Real-time Metadata Layer)
   mongo.Db? _db;
-  static const String mongoUri = "mongodb+srv://Muwanguzi:K7kkpea8VOKJhabr@necxalive.b417dk3.mongodb.net/necxalive?appName=necxalive";
+  static const String mongoUri = "mongodb://atlas-sql-6630b6a8fed7652b996aeb3d-n5eg1.a.query.mongodb.net/Hakuna?ssl=true&authSource=admin";
   
   LiveStreamingService(this.state);
 
@@ -136,15 +136,36 @@ class LiveStreamingService {
   Future<void> joinAsViewer(String channelName) async {
     if (_engine == null) return;
     
-    // Set role as Audience
-    await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
-    
-    await _engine!.joinChannel(
-      token: '', // Use real token for production
-      channelId: channelName,
-      uid: 0,
-      options: const ChannelMediaOptions(),
-    );
+    try {
+      // 1. Fetch token for audience
+      final response = await Supabase.instance.client.functions.invoke('live-studio-engine', body: {
+        'action': 'join',
+        'channelId': channelName,
+        'userId': state.user?.id,
+        'role': 'audience',
+      });
+
+      if (response.status == 200) {
+        final data = response.data;
+        final token = data['token'] ?? '';
+
+        // 2. Set role as Audience
+        await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
+        
+        // 3. Join securely with token
+        await _engine!.joinChannel(
+          token: token,
+          channelId: channelName,
+          uid: 0,
+          options: const ChannelMediaOptions(),
+        );
+      } else {
+        throw response.data['error'] ?? 'Viewer authentication failed';
+      }
+    } catch (e) {
+      debugPrint('⚠️ Necxa Live: Join as Viewer Failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> leaveChannel() async {

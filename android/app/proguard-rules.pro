@@ -71,3 +71,9 @@
 -dontskipnonpubliclibraryclasses
 -dontskipnonpubliclibraryclassmembers
 
+# Google Play Services & Google Maps
+-keep class com.google.android.gms.maps.** { *; }
+-dontwarn com.google.android.gms.maps.**
+-keep class com.google.android.gms.common.** { *; }
+-dontwarn com.google.android.gms.common.**
+

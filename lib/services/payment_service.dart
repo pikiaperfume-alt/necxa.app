@@ -23,6 +23,27 @@ class PaymentService {
     required String buyerEmail,
     String? phone,
   }) async {
+    // Route to Pesapal for cash/mobile money payments
+    if (method != 'NCX_COINS') {
+      final pesapalRes = await initiatePesapalUnlock(
+        listingId: listingId,
+        amount: amount,
+        buyerId: buyerId,
+        buyerEmail: buyerEmail,
+        phone: phone,
+      );
+      if (pesapalRes['success'] == true) {
+        return {
+          'success': true,
+          'payment_id': pesapalRes['order_id'],
+          'redirect_url': pesapalRes['redirect_url'],
+          'status': 'PROCESSING',
+        };
+      } else {
+        throw Exception(pesapalRes['message'] ?? 'Failed to initiate Pesapal payment');
+      }
+    }
+
     final body = {
       'listing_id': listingId,
       'method': method,
@@ -38,6 +59,31 @@ class PaymentService {
       return Map<String, dynamic>.from(res.data);
     } catch (e) {
       throw Exception('Payment initiation failed: $e');
+    }
+  }
+
+  /// Initiates a Pesapal checkout session for unlocking listings
+  Future<Map<String, dynamic>> initiatePesapalUnlock({
+    required String listingId,
+    required double amount,
+    required String buyerId,
+    required String buyerEmail,
+    String? phone,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('initiatePesapalPayment');
+      final res = await callable.call({
+        'amount': amount,
+        'currency': 'UGX',
+        'description': 'Unlock contact for listing $listingId',
+        'type': 'unlock_listing',
+        'listingId': listingId,
+        'email': buyerEmail,
+        'phone': phone != null ? normalizePhone(phone) : null,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      throw Exception('Pesapal unlock initiation failed: $e');
     }
   }
 

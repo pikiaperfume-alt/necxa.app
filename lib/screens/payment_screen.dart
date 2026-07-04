@@ -5,6 +5,7 @@ import '../data.dart';
 import '../models/property_container.dart';
 import '../services/payment_service.dart';
 import '../utils/error_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum PaymentStage { form, processing, success, error }
 
@@ -539,6 +540,19 @@ class _PaymentScreenState extends State<PaymentScreen>
       if (_method == 'NCX_COINS') {
         success = initiateRes['success'] == true;
       } else {
+        // Launch Pesapal redirect URL externally
+        final redirectUrl = initiateRes['redirect_url'];
+        if (redirectUrl != null) {
+          final uri = Uri.parse(redirectUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            throw Exception('Could not open checkout page.');
+          }
+        } else {
+          throw Exception('No payment link received.');
+        }
+
         success = await _paymentService.pollForPaymentCompletion(
           initiateRes['payment_id'],
         );
@@ -548,7 +562,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         widget.state.unlockProperty(p.core.id);
         setState(() => _stage = PaymentStage.success);
       } else {
-        throw Exception('Payment could not be verified');
+        throw Exception('Payment verification timed out');
       }
     } catch (e) {
       setState(() {

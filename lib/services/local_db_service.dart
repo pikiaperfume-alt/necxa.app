@@ -23,6 +23,39 @@ class LocalDbService {
   static const int _notifMaxRows   = 50;
   static const int _dbVersion      = 10;
 
+  static String? _extractUrl(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value.trim().isEmpty ? null : value.trim();
+    if (value is Map) {
+      for (final key in ['url', 'image_url', 'thumbnail_url', 'media_url', 'path']) {
+        final url = _extractUrl(value[key]);
+        if (url != null) return url;
+      }
+    }
+    return null;
+  }
+
+  static List<String> _normalizePhotoList(dynamic rawPhotos) {
+    dynamic value = rawPhotos;
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        value = jsonDecode(value);
+      } catch (_) {
+        final url = _extractUrl(value);
+        return url == null ? [] : [url];
+      }
+    }
+    if (value is List) {
+      return value
+          .map(_extractUrl)
+          .whereType<String>()
+          .where((url) => url.isNotEmpty)
+          .toList();
+    }
+    final url = _extractUrl(value);
+    return url == null ? [] : [url];
+  }
+
   Database? _database;
 
   Future<Database> get database async {
@@ -285,7 +318,7 @@ class LocalDbService {
           'author_id':      post['author_id'] ?? post['user_id'],
           'author_name':    authorName,
           'author_avatar':  authorAvatar,
-          'content':        post['content'],
+          'content':        post['content'] ?? post['title'],
           'media_url':      post['media_url'],
           'thumbnail_url':  post['thumbnail_url'],
           'hls_url':        post['hls_url'],
@@ -404,6 +437,21 @@ class LocalDbService {
         profile = rawProf as Map<String, dynamic>?;
       }
 
+      final photos = _normalizePhotoList(
+        l['miniature_photos'] ?? l['photos'] ?? l['listing_photos'],
+      );
+      final thumbnailUrl =
+          _extractUrl(l['thumbnail_url']) ??
+          _extractUrl(l['image_url']) ??
+          (photos.isNotEmpty ? photos.first : null) ??
+          _extractUrl(l['media_url']) ??
+          _extractUrl(l['film_hub_content']);
+      final mediaUrl =
+          _extractUrl(l['media_url']) ??
+          _extractUrl(l['image_url']) ??
+          _extractUrl(l['film_hub_content']) ??
+          thumbnailUrl;
+
       batch.insert(
         'shop_listings',
         {
@@ -413,13 +461,13 @@ class LocalDbService {
           'lister_avatar': l['lister_avatar'] ?? profile?['photo_url'] ?? profile?['avatar_url'],
           'title':         l['title'],
           'price':         l['price'] ?? l['price_ugx'] ?? 0,
-          'media_url':     l['media_url'] ?? l['image_url'],
-          'thumbnail_url': l['thumbnail_url'],
+          'media_url':     mediaUrl,
+          'thumbnail_url': thumbnailUrl,
           'media_type':    l['media_type'] ?? 'image',
           'category':      l['category'] ?? 'General',
           'is_verified':   (l['is_verified'] == true || l['is_verified'] == 1) ? 1 : 0,
-          'photos':        jsonEncode(l['miniature_photos'] ?? l['photos'] ?? []),
-          'film_hub_content': l['film_hub_content'] ?? l['media_url'],
+          'photos':        jsonEncode(photos),
+          'film_hub_content': _extractUrl(l['film_hub_content']) ?? mediaUrl,
           'created_at':    l['created_at'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -442,13 +490,8 @@ class LocalDbService {
       final m = Map<String, dynamic>.from(r);
       // Parse JSON array string back to List
       if (m['photos'] != null && m['photos'] is String) {
-        try {
-          final decoded = jsonDecode(m['photos']);
-          m['photos'] = decoded is List ? decoded : [];
-          m['miniature_photos'] = m['photos'];
-        } catch (_) {
-          m['photos'] = [];
-        }
+        m['photos'] = _normalizePhotoList(m['photos']);
+        m['miniature_photos'] = m['photos'];
       }
       return m;
     }).toList();

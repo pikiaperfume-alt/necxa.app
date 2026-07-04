@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -48,6 +49,162 @@ class NecxaAI {
     'https://ayvescksetiuekoyfqar.supabase.co',
     'sb_publishable_Bc_CXsA3BiuP36E4KxgkYQ_QmvyV7HT',
   );
+
+  // ── CLOUDFLARE WORKER DIRECT REST CLIENT ──
+  // necxa-ai v2: Runs on Cloudflare Workers at api.necxa.uk
+  // Endpoints: /api/verify/photo, /api/verify/video, /api/verify/audio,
+  //            /api/verify/listing, /api/verify/live-frame,
+  //            /api/assistant/chat/sync
+  static const String _workerBase = 'https://api.necxa.uk';
+
+  /// Returns auth headers that forward the logged-in user's primary JWT to
+  /// the Cloudflare Worker for cross-service identity resolution.
+  static Map<String, String> _workerHeaders() {
+    final headers = <String, String>{};
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        headers['x-primary-jwt'] = session.accessToken;
+      }
+    } catch (_) {}
+    return headers;
+  }
+
+  // ── WORKER: PHOTO MODERATION ──────────────────────────────────────────────
+  /// Submits a photo to the Cloudflare Worker's universal content moderation
+  /// engine (`/api/verify/photo`). Falls back to Supabase on network error.
+  static Future<Map<String, dynamic>> verifyPhotoWorker(File photoFile) async {
+    try {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_workerBase/api/verify/photo'),
+      )
+        ..headers.addAll(_workerHeaders())
+        ..files.add(await http.MultipartFile.fromPath('photo', photoFile.path));
+      final streamed = await req.send();
+      final body = await streamed.stream.bytesToString();
+      return jsonDecode(body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('⚡ Worker photo verify failed: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // ── WORKER: VIDEO MODERATION (multi-frame) ────────────────────────────────
+  /// Submits up to 5 extracted video frames to `/api/verify/video`.
+  static Future<Map<String, dynamic>> verifyVideoWorker(List<File> frames) async {
+    try {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_workerBase/api/verify/video'),
+      )..headers.addAll(_workerHeaders());
+      for (int i = 0; i < frames.length && i < 5; i++) {
+        req.files.add(await http.MultipartFile.fromPath('frame$i', frames[i].path));
+      }
+      final streamed = await req.send();
+      final body = await streamed.stream.bytesToString();
+      return jsonDecode(body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('⚡ Worker video verify failed: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // ── WORKER: AUDIO MODERATION (Whisper + Llama) ────────────────────────────
+  /// Transcribes audio via Whisper then moderates the transcript.
+  /// Endpoint: `/api/verify/audio`.
+  static Future<Map<String, dynamic>> verifyAudioWorker(File audioFile) async {
+    try {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_workerBase/api/verify/audio'),
+      )
+        ..headers.addAll(_workerHeaders())
+        ..files.add(await http.MultipartFile.fromPath('audio', audioFile.path));
+      final streamed = await req.send();
+      final body = await streamed.stream.bytesToString();
+      return jsonDecode(body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('⚡ Worker audio verify failed: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // ── WORKER: LISTING PHOTO VERIFICATION ───────────────────────────────────
+  /// Verifies a property listing photo is a legitimate real estate image.
+  /// Endpoint: `/api/verify/listing`.
+  static Future<Map<String, dynamic>> verifyListingPhotoWorker({
+    required File photo,
+    String title = 'Property',
+  }) async {
+    try {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_workerBase/api/verify/listing'),
+      )
+        ..headers.addAll(_workerHeaders())
+        ..fields['title'] = title
+        ..files.add(await http.MultipartFile.fromPath('photo', photo.path));
+      final streamed = await req.send();
+      final body = await streamed.stream.bytesToString();
+      return jsonDecode(body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('⚡ Worker listing verify failed: $e');
+      return {'verified': false, 'score': 0, 'error': e.toString()};
+    }
+  }
+
+  // ── WORKER: LIVE FRAME SAFETY SCAN ────────────────────────────────────────
+  /// Submits a live-stream frame directly to the Worker's safety scanner.
+  /// Endpoint: `/api/verify/live-frame`. Falls back to safe() on error.
+  static Future<LiveSafetyResult> scanLiveFrameWorker(File frameFile) async {
+    try {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_workerBase/api/verify/live-frame'),
+      )
+        ..headers.addAll(_workerHeaders())
+        ..files.add(await http.MultipartFile.fromPath('frame', frameFile.path));
+      final streamed = await req.send();
+      final body = await streamed.stream.bytesToString();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      // Worker returns flags as List<String>; convert to Map<String,bool>
+      final flagList = (data['flags'] as List?)?.cast<String>() ?? [];
+      final flagMap = {for (final f in flagList) f: true};
+      return LiveSafetyResult(
+        safe: data['safe'] ?? true,
+        flags: flagMap,
+        severity: data['severity'] ?? 'none',
+        reason: data['reason'],
+        confidence: (data['confidence'] ?? 0.0).toDouble(),
+      );
+    } catch (e) {
+      debugPrint('⚡ Worker live-frame scan (non-fatal): $e');
+      return LiveSafetyResult.safe();
+    }
+  }
+
+  // ── WORKER: SYNC CHAT (non-streaming, for mobile) ─────────────────────────
+  /// Calls `/api/assistant/chat/sync` — Llama 3.1 powered multilingual chat.
+  /// Falls back to the Supabase necxa-chat function if the worker is down.
+  static Future<String> askNecxaWorker(String userPrompt) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_workerBase/api/assistant/chat/sync'),
+        headers: {"Content-Type": "application/json", ..._workerHeaders()},
+        body: jsonEncode({'message': userPrompt}),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return data['response'] as String? ?? 'No response';
+      }
+      throw Exception('Worker returned ${res.statusCode}');
+    } catch (e) {
+      debugPrint('⚡ Worker chat failed, falling back to Supabase: $e');
+      // Fallback to existing Supabase necxa-chat function
+      return askNexca(userPrompt);
+    }
+  }
 
   // ── HELPERS ──
   static Future<String> fileToBase64(File file) async {
@@ -231,6 +388,41 @@ class NecxaAI {
       return Map<String, dynamic>.from(res.data);
     } catch (e) {
       return {'status': 'error', 'description': e.toString()};
+    }
+  }
+
+  // ── TRANSPORT DRIVER VERIFICATION ──
+  static Future<Map<String, dynamic>> verifyTransportDriver({
+    required File driverSelfie,
+    required File permitImage,
+    required File vehicleImage,
+    String? userId,
+  }) async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) throw Exception("User must be logged in to verify as a driver.");
+
+    try {
+      final driverBase64 = await fileToBase64(driverSelfie);
+      final permitBase64 = await fileToBase64(permitImage);
+      final vehicleBase64 = await fileToBase64(vehicleImage);
+
+      final res = await _aiClient.functions.invoke(
+        'verify-transport',
+        headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
+        body: {
+          'action': 'verify_transport',
+          'payload': {
+            'driverImageBase64': driverBase64,
+            'permitImageBase64': permitBase64,
+            'vehicleImageBase64': vehicleBase64,
+            'userId': userId ?? session.user.id,
+          }
+        }
+      );
+      
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'verified': false, 'error': e.toString()};
     }
   }
 

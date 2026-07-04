@@ -109,6 +109,7 @@ class SocialService {
 
     try {
       final sinceCursor = force ? null : await localDb.getSyncCursor('feed:$userId');
+      var syncedFromEdge = false;
 
       // Thin payload — only fetch what the feed card needs
       final res = await client.functions.invoke('clever-processor', body: {
@@ -127,11 +128,21 @@ class SocialService {
         } else {
           debugPrint('[Feed] No new posts since cursor.');
         }
+        syncedFromEdge = true;
       } else if (res.data != null) {
         debugPrint('[Feed] Edge function error: ${res.data['error']}');
       }
+      if (!syncedFromEdge) {
+        await _syncFeedDirect(localDb, sinceCursor, limit);
+      }
     } catch (e) {
       debugPrint('[LazySync] Feed sync error: $e');
+      try {
+        final sinceCursor = force ? null : await localDb.getSyncCursor('feed:$userId');
+        await _syncFeedDirect(localDb, sinceCursor, limit);
+      } catch (fallbackError) {
+        debugPrint('[LazySync] Feed direct fallback error: $fallbackError');
+      }
     } finally {
       // 🚀 CRITICAL FIX: Ensure the cache reflects the latest DB state after sync
       _feedCache = await localDb.getCachedFeed(limit: limit);
@@ -142,6 +153,34 @@ class SocialService {
   }
 
   /// Background sync — fire-and-forget, never blocks the UI.
+  Future<void> _syncFeedDirect(
+    LocalDbService localDb,
+    String? sinceCursor,
+    int limit,
+  ) async {
+    var query = client
+        .from('community_posts')
+        .select(
+          'id, author_id, title, content, media_url, thumbnail_url, media_type, hls_url, created_at, likes_count, comments_count, profiles:author_id(full_name, avatar_url, trust_score_tier)',
+        )
+        .inFilter('status', ['verified', 'pending', 'active'])
+        .or('visibility.eq.public,visibility.is.null');
+
+    if (sinceCursor != null) query = query.gt('created_at', sinceCursor);
+
+    final rows = List<Map<String, dynamic>>.from(
+      await query.order('created_at', ascending: false).limit(limit),
+    );
+    if (rows.isEmpty) return;
+
+    await localDb.saveCommunityPosts(rows);
+    final userId = client.auth.currentUser?.id;
+    if (userId != null) {
+      await localDb.setSyncCursor('feed:$userId', rows.first['created_at']);
+    }
+    debugPrint('[Feed] Direct fallback synced ${rows.length} posts.');
+  }
+
   void _lazyFeedSync(String userId, int limit) async {
     await syncFeed(userId, limit: limit);
     await syncPendingActions(); // Also drain the offline write queue
@@ -572,7 +611,8 @@ class SocialService {
 
       // 🛡️ IMMEDIATE LOCAL CLEANUP
       final localDb = LocalDbService();
-      await localDb.database.then((db) => db.delete('community_posts', where: 'id = ?', whereArgs: [postId]));
+      final db = await localDb.database;
+      await db.delete('community_posts', where: 'id = ?', whereArgs: [postId]);
       debugPrint('🎬 SocialService: Post $postId deleted from all nodes.');
     } catch (e) {
       debugPrint('Post Deletion Error: $e');

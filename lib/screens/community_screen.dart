@@ -18,6 +18,50 @@ import '../widgets/checkout_overlay.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+String? _extractListingImageUrl(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value.trim().isEmpty ? null : value.trim();
+  if (value is Map) {
+    for (final key in ['url', 'image_url', 'thumbnail_url', 'media_url', 'path']) {
+      final url = _extractListingImageUrl(value[key]);
+      if (url != null) return url;
+    }
+  }
+  return null;
+}
+
+List<String> _listingPhotoUrls(dynamic rawPhotos) {
+  dynamic value = rawPhotos;
+  if (value is String && value.isNotEmpty) {
+    try {
+      value = jsonDecode(value);
+    } catch (_) {
+      final url = _extractListingImageUrl(value);
+      return url == null ? [] : [url];
+    }
+  }
+  if (value is List) {
+    return value
+        .map(_extractListingImageUrl)
+        .whereType<String>()
+        .where((url) => url.isNotEmpty)
+        .toList();
+  }
+  final url = _extractListingImageUrl(value);
+  return url == null ? [] : [url];
+}
+
+String? _primaryListingImageUrl(Map<String, dynamic> listing) {
+  final photos = _listingPhotoUrls(
+    listing['miniature_photos'] ?? listing['photos'] ?? listing['listing_photos'],
+  );
+  if (photos.isNotEmpty) return photos.first;
+  return _extractListingImageUrl(listing['thumbnail_url']) ??
+      _extractListingImageUrl(listing['image_url']) ??
+      _extractListingImageUrl(listing['media_url']) ??
+      _extractListingImageUrl(listing['film_hub_content']);
+}
+
 class CommunityScreen extends StatefulWidget {
   final AppState state;
   const CommunityScreen({super.key, required this.state});
@@ -1911,23 +1955,7 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
   }
 
   Widget _buildMiniBuyCard(Map<String, dynamic> listing) {
-    // Guard: SQLite rows not read through getCachedListings() may still hold a raw JSON string.
-    final rawPhotos = listing['miniature_photos'] ?? listing['photos'];
-    List photos = [];
-    if (rawPhotos is List) {
-      photos = rawPhotos;
-    } else if (rawPhotos is String && rawPhotos.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(rawPhotos);
-        if (decoded is List) photos = decoded;
-      } catch (_) {}
-    }
-    final url = photos.isNotEmpty
-        ? photos[0].toString()
-        : (listing['thumbnail_url'] ??
-              listing['image_url'] ??
-              listing['media_url'] ??
-              listing['film_hub_content']);
+    final url = _primaryListingImageUrl(listing);
     final price = num.tryParse(listing['price']?.toString() ?? '0') ?? 0;
 
     return GestureDetector(
@@ -2752,23 +2780,7 @@ class _ShopReelItemState extends State<_ShopReelItem>
   Widget _buildExpandedBuyPanel(BuildContext context) {
     // 🚀 MINIATURES: Strictly use photos or fallback to thumbnail_url (Never the main video)
     // Guard: SQLite rows not read through getCachedListings() may still hold a raw JSON string.
-    final rawPhotos =
-        widget.listing['miniature_photos'] ?? widget.listing['photos'];
-    List photos = [];
-    if (rawPhotos is List) {
-      photos = rawPhotos;
-    } else if (rawPhotos is String && rawPhotos.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(rawPhotos);
-        if (decoded is List) photos = decoded;
-      } catch (_) {}
-    }
-    final url = photos.isNotEmpty
-        ? photos[0].toString()
-        : (widget.listing['thumbnail_url'] ??
-              widget.listing['image_url'] ??
-              widget.listing['media_url'] ??
-              widget.listing['film_hub_content']);
+    final url = _primaryListingImageUrl(widget.listing);
     final price = widget.listing['price'] ?? 0;
     final title = widget.listing['title'] ?? 'Product';
 
