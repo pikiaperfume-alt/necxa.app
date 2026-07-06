@@ -9,14 +9,40 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-shield-signature',
 }
 
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
+function cleanBase64(input: string): string {
+  return input.replace(/^data:image\/\w+;base64,/, '').trim()
+}
+
+function parseVisionJson(raw: string): Record<string, any> {
+  const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim()
+  const match = cleaned.match(/\{[\s\S]*\}/)
+  if (!match) throw new Error(`AI did not return JSON: ${raw}`)
+  return JSON.parse(match[0])
+}
+
+function normalizePlate(plate: string): string {
+  return plate.toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
 async function askCloudflareVision(prompt: string, base64Image: string): Promise<string> {
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+    throw new Error("Cloudflare AI is not configured for transport verification.");
+  }
+
   const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
   
   // Format exactly as Cloudflare expects for their Vision models
   // Convert standard base64 to byte array if needed by CF, but CF accepts base64 array in standard REST payload
   const body = {
     prompt: prompt,
-    image: [...atob(base64Image)].map(c => c.charCodeAt(0))
+    image: [...atob(cleanBase64(base64Image))].map(c => c.charCodeAt(0))
   };
 
   const response = await fetch(url, {

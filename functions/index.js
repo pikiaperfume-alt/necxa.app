@@ -749,6 +749,8 @@ exports.processGift = functions.https.onCall(async (data, context) => {
     const senderTxRef = db.collection("vault_transactions").doc();
     const recvTxRef   = db.collection("vault_transactions").doc();
     const notifRef    = db.collection("notifications").doc();
+    const senderAuditRef = db.collection("audit_logs").doc(senderId).collection("live_gifts").doc(giftRef.id);
+    const receiverAuditRef = db.collection("audit_logs").doc(receiverId).collection("live_gifts").doc(giftRef.id);
 
     await db.runTransaction(async (tx) => {
       const senderWalletRef   = db.collection("wallets").doc(senderId);
@@ -810,6 +812,36 @@ exports.processGift = functions.https.onCall(async (data, context) => {
         is_anonymous: isAnonymous || false, is_highlighted: isHighlighted,
         status: "completed",
         sender_txn_id: senderTxRef.id, receiver_txn_id: recvTxRef.id,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      tx.set(senderAuditRef, {
+        user_id: senderId,
+        counterparty_id: receiverId,
+        gift_id: giftRef.id,
+        event_type: "live_gift_sent",
+        gift_name: giftName,
+        gift_emoji: giftEmoji,
+        ncx_amount: ncxAmount,
+        receiver_ncx: receiverNcx,
+        platform_fee_ncx: platformFeeNcx,
+        context_type: contextType,
+        context_id: contextId || null,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      tx.set(receiverAuditRef, {
+        user_id: receiverId,
+        counterparty_id: isAnonymous ? null : senderId,
+        gift_id: giftRef.id,
+        event_type: "live_gift_received",
+        gift_name: giftName,
+        gift_emoji: giftEmoji,
+        ncx_amount: receiverNcx,
+        gross_ncx_amount: ncxAmount,
+        platform_fee_ncx: platformFeeNcx,
+        context_type: contextType,
+        context_id: contextId || null,
         created_at: admin.firestore.FieldValue.serverTimestamp(),
       });
 

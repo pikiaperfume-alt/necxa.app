@@ -25,6 +25,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:local_auth/local_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -212,6 +213,8 @@ class AppState extends ChangeNotifier {
 
       chatWallpaper = prefs.getString('chatWallpaper') ?? 'solid_black';
 
+      await _loadUserLanguage();
+
       notifyListeners();
     } catch (_) {}
   }
@@ -252,6 +255,26 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('chatWallpaper', wp);
+    } catch (_) {}
+  }
+
+  // ── Language Preference ──
+  /// The user's preferred language for Necxa AI responses (e.g. 'English', 'Swahili', 'Luganda', 'French').
+  String userLanguage = 'English';
+
+  Future<void> setUserLanguage(String lang) async {
+    userLanguage = lang;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userLanguage', lang);
+    } catch (_) {}
+  }
+
+  Future<void> _loadUserLanguage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      userLanguage = prefs.getString('userLanguage') ?? 'English';
     } catch (_) {}
   }
 
@@ -340,6 +363,10 @@ class AppState extends ChangeNotifier {
 
   String? _shieldError;
   String? get shieldFeedback => _shieldError;
+  void setShieldFeedback(String? message) {
+    _shieldError = message;
+    notifyListeners();
+  }
 
   // Viral Sound State
   MusicTrack? initialMusicTrack;
@@ -897,18 +924,20 @@ class AppState extends ChangeNotifier {
     } else {
       // Listing: use Worker to verify listing photo, then Supabase to persist
       if (pickedMedia != null) {
+        // ✅ Photo-based AI listing verification via Cloudflare Worker
         aiReport = await NecxaAI.verifyListingPhotoWorker(
           photo: pickedMedia!,
           title: data['title'] ?? 'Property',
         );
       } else {
-        final b64 = await NecxaAI.fileToBase64(pickedMedia ?? File(''));
+        // ✅ FIX: No media — run text-only listing verification using title/description
+        // The previous code passed File('') here, which caused a silent crash.
         aiReport = await NecxaAI.createVerifiedListing(
-          title: data['title'],
+          title: data['title'] ?? 'Untitled Property',
           description: data['description'] ?? '',
           price: double.tryParse(data['price']?.toString() ?? '0') ?? 0,
           type: data['category'] ?? 'apartment',
-          imageBase64: b64,
+          imageBase64: '', // No image — text-only verification
           userId: user!.id,
         );
       }
@@ -1461,8 +1490,8 @@ class AppState extends ChangeNotifier {
     aiSubmitting = true; notifyListeners();
 
     try {
-      if (idImage == null || faceImage == null) {
-        throw Exception("Identity scanning incomplete. Missing ID or Face photo.");
+      if (idImage == null || idBackImage == null || idHoldingImage == null || faceImage == null) {
+        throw Exception("Identity scanning incomplete. Missing front ID, back ID, holding ID, or face photo.");
       }
 
       // 1. STAGE 1: IDENTITY SHARD
@@ -1475,8 +1504,8 @@ class AppState extends ChangeNotifier {
           docType: payload['ea_id_type'] ?? 'National ID',
           docNumber: payload['id_number'] ?? '0000000000', 
           idFront: idImage!,
-          idBack: idImage!,
-          idHolding: idImage!,
+          idBack: idBackImage!,
+          idHolding: idHoldingImage!,
           facePhoto: faceImage!,
         );
         finalIdentityShardId = identityRes['identity_shard_id'];

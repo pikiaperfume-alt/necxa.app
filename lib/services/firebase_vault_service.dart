@@ -75,6 +75,31 @@ class FirebaseVaultService {
     }
   }
 
+  Future<void> logListingMint({
+    required String userId,
+    required String listingId,
+    required String mintEventId,
+    required String title,
+    required int priceUgx,
+    int listingFeeNcx = 0,
+  }) async {
+    await _firestore
+        .collection('audit_logs')
+        .doc(userId)
+        .collection('listing_mints')
+        .doc(mintEventId)
+        .set({
+      'user_id': userId,
+      'listing_id': listingId,
+      'mint_event_id': mintEventId,
+      'title': title,
+      'price_ugx': priceUgx,
+      'listing_fee_ncx': listingFeeNcx,
+      'event_type': 'listing_minted',
+      'created_at': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Initiates a Pesapal Checkout Session
   Future<Map<String, dynamic>> initiatePesapalPayment({
     required double amount,

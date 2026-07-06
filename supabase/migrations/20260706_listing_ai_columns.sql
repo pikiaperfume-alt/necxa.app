@@ -1,0 +1,4 @@
+ALTER TABLE public.listings
+  ADD COLUMN IF NOT EXISTS ai_score DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS ai_description TEXT;
+

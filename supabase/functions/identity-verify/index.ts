@@ -24,6 +24,26 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary)
 }
 
+async function verifyDocumentWithAi(file: File, label: string, aiUrl: string, apiKey: string) {
+  const aiFormData = new FormData()
+  aiFormData.append('idFront', file, `${label}.jpg`)
+
+  const aiRes = await fetch(`${aiUrl}/api/verify/id`, {
+    method: "POST",
+    headers: { 'X-API-Key': apiKey },
+    body: aiFormData,
+  })
+
+  if (!aiRes.ok) {
+    const errorText = await aiRes.text()
+    throw new Error(`${label} document AI failed: ${errorText}`)
+  }
+
+  const aiData = await aiRes.json()
+  if (!aiData.success) throw new Error(`${label} document AI failed: ${aiData.error}`)
+  return aiData.ocrResult
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
@@ -54,9 +74,24 @@ Deno.serve(async (req) => {
     const NECXA_AI_URL = Deno.env.get('NECXA_AI_URL') || 'https://api.necxa.uk';
     const NECXA_AI_API_KEY = Deno.env.get('NECXA_AI_API_KEY') || '';
 
+    const [frontOcr, backOcr, holdingOcr] = await Promise.all([
+      verifyDocumentWithAi(idFront, 'id_front', NECXA_AI_URL, NECXA_AI_API_KEY),
+      verifyDocumentWithAi(idBack, 'id_back', NECXA_AI_URL, NECXA_AI_API_KEY),
+      verifyDocumentWithAi(idHolding, 'id_holding', NECXA_AI_URL, NECXA_AI_API_KEY),
+    ])
+
+    const documentVerified = [frontOcr, backOcr, holdingOcr].every((result) => result?.verified === true)
+    if (!documentVerified) {
+      return json({
+        verified: false,
+        error: "One or more National ID scans failed document AI verification.",
+        document_results: { front: frontOcr, back: backOcr, holding: holdingOcr },
+      }, 422)
+    }
+
     const aiFormData = new FormData();
     aiFormData.append('selfie', facePhoto);
-    aiFormData.append('idReference', idHolding); // or idFront
+    aiFormData.append('idReference', idFront);
 
     const aiRes = await fetch(`${NECXA_AI_URL}/api/verify/biometric`, {
       method: "POST",
@@ -75,22 +110,36 @@ Deno.serve(async (req) => {
     }
 
     const similarity = aiData.biometricResult?.similarityScore || 0;
-    const verified = aiData.biometricResult?.faceMatch || false;
+    const verified = documentVerified && (aiData.biometricResult?.faceMatch || false);
     const fraud_risk = similarity >= 88 ? "low" : similarity >= 72 ? "medium" : "high";
+    const extractedData = frontOcr?.extractedData || holdingOcr?.extractedData || {};
 
     const aiResponse = {
       verified,
       similarity,
-      extracted_name: "Verified User",
-      extracted_nin: docNumber,
+      document_verified: documentVerified,
+      extracted_name: extractedData.fullName || "Verified User",
+      extracted_nin: extractedData.docNumber || docNumber,
       fraud_risk,
-      rejection_reason: verified ? null : "Biometric similarity below verification threshold.",
+      rejection_reason: verified ? null : "Document or biometric similarity below verification threshold.",
+      document_results: {
+        front: frontOcr,
+        back: backOcr,
+        holding: holdingOcr,
+      },
+      biometric_result: aiData.biometricResult,
     }
 
     // 4. Persistence (Storage)
     const store = async (file: File, path: string) => {
-      const { data } = await supabase.storage.from('verifications').upload(`${user.id}/${Date.now()}_${path}`, file)
-      return data?.path
+      const storagePath = `${user.id}/${Date.now()}_${path}`
+      let upload = await supabase.storage.from('identity-shards').upload(storagePath, file)
+      if (upload.error) {
+        console.warn(`identity-shards upload failed, falling back to verifications: ${upload.error.message}`)
+        upload = await supabase.storage.from('verifications').upload(storagePath, file)
+      }
+      if (upload.error) throw upload.error
+      return upload.data?.path
     }
 
     const [frontPath, backPath, holdingPath, facePath] = await Promise.all([

@@ -126,7 +126,10 @@ Deno.serve(async (req) => {
       
       // Mode A: Basic Listing Creation (from SocialService.createListing)
       if (payload.userId && payload.title && payload.price && !payload.imageBase64) {
-        const { userId, title, description, price, category, media_url, media_type, photos, status } = payload;
+        const {
+          userId, title, description, price, category, media_url,
+          media_type, photos, status, ai_verification, ai_score, ai_description
+        } = payload;
         
         const { data: listing, error: listErr } = await supabaseAdmin
           .from("listings")
@@ -144,6 +147,9 @@ Deno.serve(async (req) => {
             media_type: media_type || "image",
             photos: photos || [],
             is_verified: true,
+            ai_verification: ai_verification || null,
+            ai_score: ai_score ?? ai_verification?.score ?? null,
+            ai_description: ai_description ?? ai_verification?.description ?? null,
           })
           .select()
           .single();
@@ -436,6 +442,8 @@ Deno.serve(async (req) => {
           thumbnail_url: photoPaths.length > 0 ? photoPaths[0] : null, // Essential for fast feed loading
           film_hub_content: videoPaths.length > 0 ? videoPaths[0] : null,
           photos: photoPaths, // Store miniatures directly in the JSON column
+          ai_score: aiScore,
+          ai_description: aiDescription,
           ai_verification: {
             property_type: propertyType.toUpperCase(),
             score: aiScore,

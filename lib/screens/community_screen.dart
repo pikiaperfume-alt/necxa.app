@@ -553,6 +553,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         state: widget.state,
                         channelName: s['channelId'],
                         isHost: false,
+                        hostId: s['hostId']?.toString(),
                       ),
                     ),
                   );
@@ -756,6 +757,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       state: widget.state,
                       channelName: '${widget.state.myProfile?['full_name'] ?? 'User'}_Live',
                       isHost: true,
+                      hostId: widget.state.user?.id,
                     ),
                   ),
                 );

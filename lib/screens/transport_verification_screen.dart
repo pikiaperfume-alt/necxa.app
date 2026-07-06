@@ -24,7 +24,7 @@ class _TransportVerificationScreenState extends State<TransportVerificationScree
   Map<String, dynamic>? _result;
 
   Future<void> _pickImage(int step) async {
-    final source = step == 1 ? ImageSource.camera : ImageSource.gallery;
+    final source = ImageSource.camera;
     final picked = await _picker.pickImage(source: source, imageQuality: 80);
     
     if (picked != null) {
@@ -61,7 +61,8 @@ class _TransportVerificationScreenState extends State<TransportVerificationScree
     });
 
     if (res['verified'] == true) {
-      // Driver profile was automatically updated by the edge function!
+      await widget.state.checkDriverStatus();
+      await widget.state.fetchAvailableDrivers();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Verification Successful! Plate: ${res['number_plate']}'),
@@ -143,8 +144,8 @@ class _TransportVerificationScreenState extends State<TransportVerificationScree
                   const SizedBox(height: 40),
                   
                   _buildStep(1, 'Live Selfie', 'Take a quick photo of your face', Icons.face, _selfieFile),
-                  _buildStep(2, 'Driving Permit', 'Scan your official driving license', Icons.badge, _permitFile),
-                  _buildStep(3, 'Vehicle License Plate', 'Clear photo of the back plate', Icons.directions_car, _vehicleFile),
+                  _buildStep(2, 'Driving Permit', 'Capture your official driving permit', Icons.badge, _permitFile),
+                  _buildStep(3, 'Vehicle License Plate', 'Capture a clear photo of the plate', Icons.directions_car, _vehicleFile),
 
                   if (_result != null && _result!['verified'] == false)
                     Container(

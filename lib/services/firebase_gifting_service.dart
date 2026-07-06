@@ -289,29 +289,38 @@ class FirebaseGiftingService {
     required String contextType,
     int limit = 30,
   }) {
-    return _db
+    // Firestore security rules only allow public reads for non-anonymous gifts
+    // in social contexts. Ensure the query includes that filter so it can
+    // be executed by client-side code.
+    final publicContexts = ['creator_post', 'live_stream', 'broadcast_message'];
+
+    var query = _db
         .collection('ncx_gifts')
         .where('context_id', isEqualTo: contextId)
         .where('context_type', isEqualTo: contextType)
         .where('status', isEqualTo: 'completed')
         .orderBy('created_at', descending: true)
-        .limit(limit)
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-              final d = doc.data();
-              return ContextGiftEntry(
-                giftId: doc.id,
-                senderId: (d['is_anonymous'] as bool? ?? false) ? null : d['sender_id'] as String?,
-                giftEmoji: d['gift_emoji'] as String? ?? '💎',
-                giftName: d['gift_name'] as String? ?? '',
-                ncxAmount: (d['ncx_amount'] as num?)?.toInt() ?? 0,
-                ugxEquivalent: (d['ugx_equivalent'] as num?)?.toInt() ?? 0,
-                receiverNcx: (d['receiver_ncx'] as num?)?.toInt() ?? 0,
-                isAnonymous: d['is_anonymous'] as bool? ?? false,
-                isHighlighted: d['is_highlighted'] as bool? ?? false,
-                createdAt: (d['created_at'] as Timestamp?)?.toDate(),
-              );
-            }).toList());
+        .limit(limit);
+
+    if (publicContexts.contains(contextType)) {
+      query = query.where('is_anonymous', isEqualTo: false);
+    }
+
+    return query.snapshots().map((snap) => snap.docs.map((doc) {
+          final d = doc.data();
+          return ContextGiftEntry(
+            giftId: doc.id,
+            senderId: (d['is_anonymous'] as bool? ?? false) ? null : d['sender_id'] as String?,
+            giftEmoji: d['gift_emoji'] as String? ?? '💎',
+            giftName: d['gift_name'] as String? ?? '',
+            ncxAmount: (d['ncx_amount'] as num?)?.toInt() ?? 0,
+            ugxEquivalent: (d['ugx_equivalent'] as num?)?.toInt() ?? 0,
+            receiverNcx: (d['receiver_ncx'] as num?)?.toInt() ?? 0,
+            isAnonymous: d['is_anonymous'] as bool? ?? false,
+            isHighlighted: d['is_highlighted'] as bool? ?? false,
+            createdAt: (d['created_at'] as Timestamp?)?.toDate(),
+          );
+        }).toList());
   }
 
   /// Gift totals/summary for a context.

@@ -358,7 +358,8 @@ async function handleCreateListing(userId: string, payload: any) {
   const { 
     title, description, price, media_url, media_type, 
     category, is_verified, ai_verification, photos, 
-    thumbnail_url, music_track_id, audio_url, tags
+    thumbnail_url, music_track_id, audio_url, tags,
+    ai_score, ai_description
   } = payload;
 
   const { data: listing, error } = await supabase
@@ -378,6 +379,8 @@ async function handleCreateListing(userId: string, payload: any) {
       category: category || 'General',
       tags: tags || [],
       ai_verification: ai_verification || null,
+      ai_score: ai_score ?? ai_verification?.score ?? null,
+      ai_description: ai_description ?? ai_verification?.description ?? null,
       is_verified: is_verified || false,
       film_hub_content: media_url,
       sku: payload.sku || `SKU-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,

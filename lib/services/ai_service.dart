@@ -44,11 +44,7 @@ class LiveSafetyResult {
 }
 
 class NecxaAI {
-  // ── SECONDARY SUPABASE CLIENT FOR DECOUPLED AI SERVICES ──
-  static final SupabaseClient _aiClient = SupabaseClient(
-    'https://ayvescksetiuekoyfqar.supabase.co',
-    'sb_publishable_Bc_CXsA3BiuP36E4KxgkYQ_QmvyV7HT',
-  );
+  // ── USING PRIMARY SUPABASE CLIENT FOR DECOUPLED AI SERVICES ──
 
   // ── CLOUDFLARE WORKER DIRECT REST CLIENT ──
   // necxa-ai v2: Runs on Cloudflare Workers at api.necxa.uk
@@ -65,6 +61,7 @@ class NecxaAI {
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
         headers['x-primary-jwt'] = session.accessToken;
+        headers['Authorization'] = 'Bearer ${session.accessToken}';
       }
     } catch (_) {}
     return headers;
@@ -81,7 +78,7 @@ class NecxaAI {
       )
         ..headers.addAll(_workerHeaders())
         ..files.add(await http.MultipartFile.fromPath('photo', photoFile.path));
-      final streamed = await req.send();
+      final streamed = await req.send().timeout(const Duration(seconds: 15));
       final body = await streamed.stream.bytesToString();
       return jsonDecode(body) as Map<String, dynamic>;
     } catch (e) {
@@ -101,7 +98,7 @@ class NecxaAI {
       for (int i = 0; i < frames.length && i < 5; i++) {
         req.files.add(await http.MultipartFile.fromPath('frame$i', frames[i].path));
       }
-      final streamed = await req.send();
+      final streamed = await req.send().timeout(const Duration(seconds: 15));
       final body = await streamed.stream.bytesToString();
       return jsonDecode(body) as Map<String, dynamic>;
     } catch (e) {
@@ -121,7 +118,7 @@ class NecxaAI {
       )
         ..headers.addAll(_workerHeaders())
         ..files.add(await http.MultipartFile.fromPath('audio', audioFile.path));
-      final streamed = await req.send();
+      final streamed = await req.send().timeout(const Duration(seconds: 15));
       final body = await streamed.stream.bytesToString();
       return jsonDecode(body) as Map<String, dynamic>;
     } catch (e) {
@@ -145,7 +142,7 @@ class NecxaAI {
         ..headers.addAll(_workerHeaders())
         ..fields['title'] = title
         ..files.add(await http.MultipartFile.fromPath('photo', photo.path));
-      final streamed = await req.send();
+      final streamed = await req.send().timeout(const Duration(seconds: 15));
       final body = await streamed.stream.bytesToString();
       return jsonDecode(body) as Map<String, dynamic>;
     } catch (e) {
@@ -165,7 +162,7 @@ class NecxaAI {
       )
         ..headers.addAll(_workerHeaders())
         ..files.add(await http.MultipartFile.fromPath('frame', frameFile.path));
-      final streamed = await req.send();
+      final streamed = await req.send().timeout(const Duration(seconds: 15));
       final body = await streamed.stream.bytesToString();
       final data = jsonDecode(body) as Map<String, dynamic>;
       // Worker returns flags as List<String>; convert to Map<String,bool>
@@ -185,15 +182,16 @@ class NecxaAI {
   }
 
   // ── WORKER: SYNC CHAT (non-streaming, for mobile) ─────────────────────────
-  /// Calls `/api/assistant/chat/sync` — Llama 3.1 powered multilingual chat.
+  /// Calls `/api/assistant/chat/sync` — Llama 3.1 powered chat.
+  /// The [language] parameter locks the AI response to the user's preferred language.
   /// Falls back to the Supabase necxa-chat function if the worker is down.
-  static Future<String> askNecxaWorker(String userPrompt) async {
+  static Future<String> askNecxaWorker(String userPrompt, {String language = 'English'}) async {
     try {
       final res = await http.post(
         Uri.parse('$_workerBase/api/assistant/chat/sync'),
         headers: {"Content-Type": "application/json", ..._workerHeaders()},
-        body: jsonEncode({'message': userPrompt}),
-      );
+        body: jsonEncode({'message': userPrompt, 'language': language}),
+      ).timeout(const Duration(seconds: 15));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         return data['response'] as String? ?? 'No response';
@@ -235,7 +233,7 @@ class NecxaAI {
 
       final base64 = await fileToBase64(imageFile);
       
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'verify-identity-shard',
         headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
         body: {
@@ -267,7 +265,7 @@ class NecxaAI {
 
       final base64 = await fileToBase64(frameFile);
 
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'verify-content',
         headers: _aiHeaders(),
         body: {
@@ -296,7 +294,7 @@ class NecxaAI {
       final selfieBase64 = await fileToBase64(selfieFile);
       final idBase64 = await fileToBase64(idReferenceFile);
       
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'verify-identity-shard',
         headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
         body: {
@@ -318,7 +316,7 @@ class NecxaAI {
   static Future<Map<String, dynamic>> verifyIdentity(String idBase64, String selfieBase64, {String? userId}) async {
     try {
       final session = Supabase.instance.client.auth.currentSession;
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'verify-identity-shard',
         headers: _aiHeaders(),
         body: {
@@ -346,7 +344,7 @@ class NecxaAI {
     if (session == null) return 'Login required for Necxa Chat';
 
     try {
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'necxa-chat',
         headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
         body: {
@@ -406,7 +404,7 @@ class NecxaAI {
       final permitBase64 = await fileToBase64(permitImage);
       final vehicleBase64 = await fileToBase64(vehicleImage);
 
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'verify-transport',
         headers: _aiHeaders(extra: {'X-Shield-Signature': 'SHIELD_VERIFIED_772'}),
         body: {
@@ -419,7 +417,15 @@ class NecxaAI {
           }
         }
       );
-      
+
+      if (res.status != 200) {
+        final data = res.data;
+        if (data is Map && data['error'] != null) {
+          throw Exception(data['error']);
+        }
+        throw Exception('Transport AI verification failed.');
+      }
+
       return Map<String, dynamic>.from(res.data);
     } catch (e) {
       return {'verified': false, 'error': e.toString()};
@@ -437,7 +443,7 @@ class NecxaAI {
   }) async {
     final session = Supabase.instance.client.auth.currentSession;
     try {
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'verify-content',
         headers: _aiHeaders(),
         body: {
@@ -536,7 +542,7 @@ class NecxaAI {
   // ── PROPERTY UTILITY VERIFICATION ──
   static Future<Map<String, dynamic>> verifyUtilityBill(String billBase64, String type, {String? userId}) async {
     try {
-      final res = await _aiClient.functions.invoke(
+      final res = await Supabase.instance.client.functions.invoke(
         'utility-verify',
         headers: _aiHeaders(),
         body: {
@@ -556,7 +562,7 @@ class NecxaAI {
   // ── NATIVE PROPERTY VERIFICATION ──
   static Future<Map<String, dynamic>> verifyProperty(String propertyId) async {
      try {
-       final res = await _aiClient.functions.invoke(
+       final res = await Supabase.instance.client.functions.invoke(
          'verify-property',
          headers: _aiHeaders(),
          body: {'property_id': propertyId}

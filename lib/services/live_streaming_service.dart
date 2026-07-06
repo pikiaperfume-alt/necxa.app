@@ -10,6 +10,8 @@ import '../app_state.dart';
 class LiveStreamingService {
   final AppState state;
   RtcEngine? _engine;
+  String? _activeChannelName;
+  bool _hostingActiveChannel = false;
   
   // Agora Configuration
   static const String appId = "2d9c22945103407da35ff652bf8c9a2d";
@@ -86,8 +88,13 @@ class LiveStreamingService {
       });
 
       if (response.status == 200) {
-        final data = response.data;
-        final token = data['token'] ?? '';
+        final data = Map<String, dynamic>.from(response.data ?? {});
+        final token = (data['token'] ?? '').toString();
+        if (token.isEmpty) {
+          throw 'Live token was not returned by the server.';
+        }
+        _activeChannelName = channelName;
+        _hostingActiveChannel = true;
         
         // 2. Set role as Broadcaster (Host)
         await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
@@ -111,7 +118,7 @@ class LiveStreamingService {
           options: const ChannelMediaOptions(),
         );
       } else {
-        throw response.data['error'] ?? 'Authentication failed';
+        throw _functionError(response.data, fallback: 'Authentication failed');
       }
     } catch (e) {
       debugPrint('⚠️ Necxa Live: Start Failed: $e');
@@ -146,8 +153,13 @@ class LiveStreamingService {
       });
 
       if (response.status == 200) {
-        final data = response.data;
-        final token = data['token'] ?? '';
+        final data = Map<String, dynamic>.from(response.data ?? {});
+        final token = (data['token'] ?? '').toString();
+        if (token.isEmpty) {
+          throw 'Viewer live token was not returned by the server.';
+        }
+        _activeChannelName = channelName;
+        _hostingActiveChannel = false;
 
         // 2. Set role as Audience
         await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
@@ -160,7 +172,7 @@ class LiveStreamingService {
           options: const ChannelMediaOptions(),
         );
       } else {
-        throw response.data['error'] ?? 'Viewer authentication failed';
+        throw _functionError(response.data, fallback: 'Viewer authentication failed');
       }
     } catch (e) {
       debugPrint('⚠️ Necxa Live: Join as Viewer Failed: $e');
@@ -169,13 +181,52 @@ class LiveStreamingService {
   }
 
   Future<void> leaveChannel() async {
+    final channelName = _activeChannelName;
+    final shouldStop = _hostingActiveChannel && channelName != null;
+    if (shouldStop) {
+      await stopStreaming(channelName);
+    }
     if (_engine != null) {
       await _engine!.leaveChannel();
+    }
+    _activeChannelName = null;
+    _hostingActiveChannel = false;
+  }
+
+  Future<void> stopStreaming(String channelName) async {
+    try {
+      await Supabase.instance.client.functions.invoke('live-studio-engine', body: {
+        'action': 'stop',
+        'channelId': channelName,
+        'userId': state.user?.id,
+      });
+    } catch (e) {
+      debugPrint('⚠️ Necxa Live: Stop sync failed: $e');
     }
   }
 
   Future<void> switchRoleToBroadcaster() async {
     if (_engine == null) return;
+    final channelName = _activeChannelName;
+    if (channelName == null) throw 'No active live channel.';
+
+    final response = await Supabase.instance.client.functions.invoke('live-studio-engine', body: {
+      'action': 'join',
+      'channelId': channelName,
+      'userId': state.user?.id,
+      'role': 'publisher',
+    });
+
+    if (response.status != 200) {
+      throw _functionError(response.data, fallback: 'Broadcaster authentication failed');
+    }
+    final data = Map<String, dynamic>.from(response.data ?? {});
+    final token = (data['token'] ?? '').toString();
+    if (token.isEmpty) {
+      throw 'Broadcaster live token was not returned by the server.';
+    }
+
+    await _engine!.renewToken(token);
     await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
     await _engine!.enableLocalAudio(true);
     await _engine!.enableLocalVideo(true);
@@ -183,6 +234,23 @@ class LiveStreamingService {
 
   Future<void> switchRoleToAudience() async {
     if (_engine == null) return;
+    final channelName = _activeChannelName;
+    if (channelName != null) {
+      final response = await Supabase.instance.client.functions.invoke('live-studio-engine', body: {
+        'action': 'join',
+        'channelId': channelName,
+        'userId': state.user?.id,
+        'role': 'audience',
+      });
+
+      if (response.status == 200) {
+        final data = Map<String, dynamic>.from(response.data ?? {});
+        final token = (data['token'] ?? '').toString();
+        if (token.isNotEmpty) {
+          await _engine!.renewToken(token);
+        }
+      }
+    }
     await _engine!.enableLocalAudio(false);
     await _engine!.enableLocalVideo(false);
     await _engine!.setClientRole(role: ClientRoleType.clientRoleAudience);
@@ -217,6 +285,31 @@ class LiveStreamingService {
       'channelName': channelId,
       'userName': gift['userName'] ?? 'Viewer',
       'text': 'sent a ${gift['name'] ?? 'Gift'} ${gift['emoji'] ?? '🎁'}',
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> sendCoHostRequest(String channelId, String userId, Map<String, dynamic> metadata) async {
+    if (_db == null) throw 'Live event service is unavailable. Please try again.';
+    final coll = _db!.collection('stream_events');
+    await coll.insert({
+      'channelId': channelId,
+      'userId': userId,
+      'type': 'cohost_request',
+      'data': metadata,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    debugPrint('🛡️ Necxa Live: Co-Host Request Sent to MongoDB');
+  }
+
+  Future<void> sendCoHostDecision(String channelId, String guestId, bool accepted) async {
+    if (_db == null) throw 'Live event service is unavailable. Please try again.';
+    final coll = _db!.collection('stream_events');
+    await coll.insert({
+      'channelId': channelId,
+      'userId': guestId, // The guest who requested it
+      'type': 'cohost_decision',
+      'data': {'accepted': accepted},
       'timestamp': DateTime.now().toIso8601String(),
     });
   }
@@ -264,6 +357,12 @@ class LiveStreamingService {
       );
       return lastEvent ?? {};
     });
+  }
+
+  String _functionError(dynamic data, {required String fallback}) {
+    if (data is Map && data['error'] != null) return data['error'].toString();
+    if (data is String && data.trim().isNotEmpty) return data;
+    return fallback;
   }
 
   // ── Disposal ────────────────────────────────────────────────

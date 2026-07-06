@@ -67,6 +67,16 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Listing mint audit trail. Users can create/read only their own mint events.
+    match /audit_logs/{userId}/listing_mints/{mintId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.user_id == userId
+                    && request.resource.data.event_type == 'listing_minted';
+      allow update, delete: if false;
+    }
+
     // ── DEFAULT SECURE REJECT ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -469,6 +469,15 @@ class SocialService {
 
   Future<void> createListing(String userId, Map<String, dynamic> data, {Map<String, dynamic>? aiResult}) async {
     final double parsedPrice = double.tryParse(data['price']?.toString() ?? '0') ?? 0;
+    num? parseScore(dynamic value) {
+      if (value is num) return value;
+      if (value == null) return null;
+      return num.tryParse(value.toString());
+    }
+
+    final num? aiScore = parseScore(aiResult?['score'] ?? data['ai_score']);
+    final String? aiDescription =
+        aiResult?['description']?.toString() ?? data['ai_description']?.toString();
     // 1. Sanitize payload for 'listings' table
     final sanitizedData = {
       'user_id': userId,
@@ -483,6 +492,8 @@ class SocialService {
       'media_type': data['media_type'] ?? 'image',
       'is_verified': aiResult?['verified'] ?? data['is_verified'] ?? false,
       'ai_verification': aiResult ?? data['ai_verification'],
+      'ai_score': aiScore,
+      'ai_description': aiDescription,
       'status': 'active', // Force active so it shows in the feed immediately
       'photos': data['photos'] ?? [],
       'sku': data['sku'] ?? 'SKU-${DateTime.now().millisecondsSinceEpoch}',

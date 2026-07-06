@@ -6,6 +6,8 @@ import 'package:camera/camera.dart';
 import '../theme.dart';
 import '../app_state.dart';
 import '../services/listing_sync_service.dart';
+import '../services/firebase_vault_service.dart';
+import '../services/ai_service.dart';
 import '../utils/error_handler.dart';
 import '../main.dart' show cameras;
 
@@ -100,8 +102,9 @@ class _ListingWizardState extends State<ListingWizardScreen> {
       case 0: return _titleCtrl.text.isNotEmpty && _districtCtrl.text.isNotEmpty;
       case 1: return _priceCtrl.text.isNotEmpty;
       case 2: return (widget.state.lastIDResult?.verified ?? false) && 
-                     (widget.state.lastSelfieResult?.faceMatch ?? false) && 
-                     (widget.state.lastHoldingResult?.verified ?? false);
+                     (widget.state.lastIDBackResult?.verified ?? false) &&
+                     (widget.state.lastHoldingResult?.verified ?? false) &&
+                     (widget.state.lastSelfieResult?.faceMatch ?? false);
       case 3: return _umemeCtrl.text.isNotEmpty || _role == 'agent'; // Simplified
       case 4: return _gpsLocked;
       case 5: return _exteriorPhotos.isNotEmpty;
@@ -290,30 +293,94 @@ class _ListingWizardState extends State<ListingWizardScreen> {
     );
   }
 
+  IDResult _idResultFrom(Map<String, dynamic> data) {
+    final rawScore = data['score'];
+    final score = rawScore is num ? rawScore : num.tryParse(rawScore?.toString() ?? '');
+    final verified = data['verified'] == true || (score != null && score >= 70);
+    return IDResult(
+      verified: verified,
+      sessionId: data['sessionLink']?.toString() ??
+          data['sessionId']?.toString() ??
+          'ID-${DateTime.now().millisecondsSinceEpoch}',
+    );
+  }
+
+  SelfieResult _selfieResultFrom(Map<String, dynamic> data) {
+    final rawScore = data['score'];
+    final score = rawScore is num ? rawScore : num.tryParse(rawScore?.toString() ?? '');
+    final faceMatch = data['faceMatch'] == true ||
+        data['verified'] == true ||
+        (score != null && score >= 70);
+    return SelfieResult(
+      faceMatch: faceMatch,
+      sessionId: data['sessionLink']?.toString() ??
+          data['sessionId']?.toString() ??
+          'BIO-${DateTime.now().millisecondsSinceEpoch}',
+    );
+  }
+
+  String _aiFeedback(Map<String, dynamic> data, String fallback) =>
+      data['feedback']?.toString() ??
+      data['error']?.toString() ??
+      data['reason']?.toString() ??
+      fallback;
+
   Future<void> _runIdentityVerification(CameraController? cameraCtrl) async {
     setState(() => _loading = true);
     try {
       final state = widget.state;
+      state.setShieldFeedback(null);
+      if (cameraCtrl == null || !cameraCtrl.value.isInitialized) {
+        throw Exception('Camera is not ready yet. Please wait a moment and try again.');
+      }
 
       if (state.verificationSubStep == 0) {
         state.captureGps().timeout(const Duration(seconds: 5), onTimeout: () {}).catchError((e) {});
-        final xfile = await cameraCtrl!.takePicture();
+        final xfile = await cameraCtrl.takePicture();
         state.idImage = File(xfile.path);
+        final result = await NecxaAI.verifyID(state.idImage!, userId: state.user?.id);
+        final idResult = _idResultFrom(result);
+        if (!idResult.verified) {
+          throw Exception(_aiFeedback(result, 'National ID front scan failed. Please retake a clearer photo.'));
+        }
+        state.lastIDResult = idResult;
         state.verificationSubStep = 1;
       } else if (state.verificationSubStep == 1) {
-        final xfile = await cameraCtrl!.takePicture();
+        final xfile = await cameraCtrl.takePicture();
         state.idBackImage = File(xfile.path);
+        final result = await NecxaAI.verifyID(state.idBackImage!, userId: state.user?.id);
+        final idResult = _idResultFrom(result);
+        if (!idResult.verified) {
+          throw Exception(_aiFeedback(result, 'National ID back scan failed. Please retake the back side clearly.'));
+        }
+        state.lastIDBackResult = idResult;
         state.verificationSubStep = 2;
       } else if (state.verificationSubStep == 2) {
-        final xfile = await cameraCtrl!.takePicture();
+        final xfile = await cameraCtrl.takePicture();
         state.idHoldingImage = File(xfile.path);
+        final result = await NecxaAI.verifyID(state.idHoldingImage!, userId: state.user?.id);
+        final idResult = _idResultFrom(result);
+        if (!idResult.verified) {
+          throw Exception(_aiFeedback(result, 'Holding-ID scan failed. Keep your face and ID visible, then retry.'));
+        }
+        state.lastHoldingResult = idResult;
         state.verificationSubStep = 3;
         
         // Auto-toggle to selfie camera for 3D Biometric Match
-        _scannerKey.currentState?.switchCamera(CameraLensDirection.front);
+        await _scannerKey.currentState?.switchCamera(CameraLensDirection.front);
       } else if (state.verificationSubStep == 3) {
-        final xfile = await cameraCtrl!.takePicture();
+        final xfile = await cameraCtrl.takePicture();
         state.faceImage = File(xfile.path);
+        final selfieResult = await NecxaAI.verifySelfie(
+          state.faceImage!,
+          state.idImage!,
+          userId: state.user?.id,
+        );
+        final biometric = _selfieResultFrom(selfieResult);
+        if (!biometric.faceMatch) {
+          throw Exception(_aiFeedback(selfieResult, 'Biometric face match failed. Please retry in better light.'));
+        }
+        state.lastSelfieResult = biometric;
         
         final res = await ListingSyncService.submitIdentityShard(
           country: 'Uganda',
@@ -327,7 +394,6 @@ class _ListingWizardState extends State<ListingWizardScreen> {
         
         state.identityShardId = res['identity_shard_id'] ?? 'MOCK_SHARD';
         _identityShardId = state.identityShardId;
-        _utilityShardId = state.identityShardId;
         state.verificationSubStep = 4;
       }
 
@@ -340,6 +406,7 @@ class _ListingWizardState extends State<ListingWizardScreen> {
         });
       }
     } catch (e) {
+      widget.state.setShieldFeedback(getUserFriendlyError(e));
       setState(() => _loading = false);
       _showError(getUserFriendlyError(e));
     }
@@ -414,9 +481,24 @@ class _ListingWizardState extends State<ListingWizardScreen> {
         securityMetadata: await widget.state.getFullSecurityMetadata(),
       );
 
+      final mintEventId = result['mint_event_id']?.toString() ??
+          result['event_id']?.toString() ??
+          'NECXA-MINT-${DateTime.now().millisecondsSinceEpoch}';
+      try {
+        await FirebaseVaultService().logListingMint(
+          userId: widget.state.user!.id,
+          listingId: result['listing_id']?.toString() ?? '',
+          mintEventId: mintEventId,
+          title: _titleCtrl.text,
+          priceUgx: int.tryParse(_priceCtrl.text.replaceAll(',', '')) ?? 0,
+        );
+      } catch (e) {
+        debugPrint('Firebase listing mint audit failed: $e');
+      }
+
       setState(() {
         _submitted = true;
-        _mintEventId = result['event_id'] ?? 'NECXA-MINT-${DateTime.now().year}';
+        _mintEventId = mintEventId;
         _loading = false;
       });
     } catch (e) {
@@ -632,7 +714,7 @@ class _Step3Identity extends StatelessWidget {
         SizedBox(width: double.infinity, child: ElevatedButton.icon(
           onPressed: loading ? null : () {
             final ctrl = scannerKey.currentState?.cameraCtrl;
-            if (ctrl != null) onVerify(ctrl);
+            onVerify(ctrl);
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: C.brand,

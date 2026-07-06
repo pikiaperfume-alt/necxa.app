@@ -10,6 +10,7 @@ import '../data.dart';
 import '../theme.dart';
 import '../app_state.dart';
 import '../services/live_streaming_service.dart';
+import '../services/firebase_gifting_service.dart';
 import '../widgets/live_overlays.dart';
 import '../widgets/checkout_container.dart';
 import '../services/ai_service.dart';
@@ -22,12 +23,14 @@ class LiveStudioScreen extends StatefulWidget {
   final AppState state;
   final String channelName;
   final bool isHost;
+  final String? hostId;
 
   const LiveStudioScreen({
     super.key,
     required this.state,
     required this.channelName,
     this.isHost = false,
+    this.hostId,
   });
 
   @override
@@ -47,6 +50,8 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
   final TextEditingController _commentController = TextEditingController();
   List<Map<String, dynamic>> _liveComments = [];
   Timer? _commentsTimer;
+  StreamSubscription<Map<String, dynamic>>? _eventsSubscription;
+  String? _lastHandledEventKey;
   bool _requiresVerification = false;
 
   // ── Smart Live Verification State ──────────────────────────────────────
@@ -62,6 +67,8 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
   int _consecutiveViolations = 0;
   bool _isEnforcementActive = false;
   String? _enforcementReason;
+  String? get _hostUserId => widget.hostId ?? (widget.isHost ? widget.state.user?.id : null);
+  int get _viewerCount => _remoteUids.toSet().length + (_localUserJoined ? 1 : 0);
 
   @override
   void initState() {
@@ -71,22 +78,62 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
     // If already verified within 30 days the user goes live with zero friction.
     _checkLiveVerificationStatus().then((_) => _initAgora());
 
-    // Warm up comments with premium welcome chat indicators
-    _liveComments = [
-      {'user': 'Alex M.', 'text': 'This stream is fire! 🔥'},
-      {'user': 'Sarah K.', 'text': 'Can you show the first product?'},
-      {'user': 'David L.', 'text': 'Super premium quality!'},
-    ];
+    // Initialize with empty real comments. Sync will fetch existing comments.
+    _liveComments = [];
 
     _startCommentsSync();
 
-    if (widget.isHost) {
-      // Mock pending requests to showcase host accept/decline flows instantly!
-      widget.state.liveGuestRequests = [
-        {'id': 'usr_23', 'name': 'Sarah K.', 'avatar': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330'},
-        {'id': 'usr_45', 'name': 'Alex M.', 'avatar': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d'},
-      ];
-    }
+    // Guest requests are driven by live stream events.
+  }
+
+  void _startLiveEventSync() {
+    _eventsSubscription?.cancel();
+    _eventsSubscription = widget.state.live.listenToEvents(widget.channelName).listen((event) {
+      if (!mounted || event.isEmpty) return;
+
+      final eventKey = (event['_id'] ?? '${event['type']}_${event['userId']}_${event['timestamp']}').toString();
+      if (eventKey == _lastHandledEventKey) return;
+      _lastHandledEventKey = eventKey;
+
+      final type = event['type']?.toString();
+      if (type == 'cohost_request' && widget.isHost) {
+        final data = Map<String, dynamic>.from(event['data'] ?? {});
+        final guestId = event['userId']?.toString();
+        if (guestId == null || guestId.isEmpty) return;
+
+        final exists = widget.state.liveGuestRequests.any((req) => req['userId'] == guestId);
+        if (!exists) {
+          setState(() {
+            widget.state.liveGuestRequests.add({
+              'userId': guestId,
+              'name': data['name'] ?? 'Viewer',
+              'avatar': data['avatar'] ?? '',
+            });
+          });
+        }
+      } else if (type == 'cohost_decision' && !widget.isHost) {
+        final guestId = event['userId']?.toString();
+        if (guestId != widget.state.user?.id || !_isRequestPending) return;
+
+        final data = Map<String, dynamic>.from(event['data'] ?? {});
+        final accepted = data['accepted'] == true;
+        if (accepted) {
+          widget.state.live.switchRoleToBroadcaster().then((_) {
+            if (!mounted) return;
+            setState(() {
+              _isCoHosting = true;
+              _isRequestPending = false;
+            });
+            _showToast('Request approved. You are now co-streaming live!');
+          }).catchError((e) {
+            if (mounted) _showToast('Could not start co-streaming: $e');
+          });
+        } else {
+          setState(() => _isRequestPending = false);
+          _showToast('Co-hosting request declined');
+        }
+      }
+    });
   }
 
 
@@ -131,6 +178,7 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
     if (liveService.engine == null) {
       await liveService.init();
     }
+    _startLiveEventSync();
 
     // Register Event Handler
     liveService.engine?.registerEventHandler(
@@ -253,8 +301,6 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
       if (!file.existsSync()) return;
 
       // 1. Liveness Check (Supabase — biometric composite model)
-      final idResult = await NecxaAI.verifyID(file, userId: widget.state.user?.id);
-      debugPrint('🛡️ Face Pulse: verified=${idResult['verified']}, score=${idResult['score']}');
 
       // 2. Strict Content Safety Scan via Cloudflare Worker (Llama 3.2 Vision).
       // Falls back to safe() on any network error — stream is never killed
@@ -310,9 +356,19 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
     });
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
       if (!mounted) return;
-      
+
+      await widget.state.loadMyProfile();
+      final profile = widget.state.myProfile ?? {};
+      final verifiedAtRaw = profile['verified_at']?.toString();
+      final verifiedAt = verifiedAtRaw != null ? DateTime.tryParse(verifiedAtRaw) : null;
+      final verifiedRecently = verifiedAt != null && DateTime.now().difference(verifiedAt) <= _reverifyPeriod;
+      final verified = profile['verified'] == true || profile['face_verified'] == true || verifiedRecently;
+
+      if (!verified) {
+        throw 'Complete real identity verification before going live.';
+      }
+
       await _markLiveVerified();
       widget.state.notify();
       _initAgora();
@@ -330,6 +386,7 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _commentsTimer?.cancel();
+    _eventsSubscription?.cancel();
     _stopSilentFacePulse();
     _commentController.dispose();
     widget.state.live.leaveChannel();
@@ -555,7 +612,7 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                             ),
                             Row(
                               children: [
-                                Text('1.2K Viewers', style: dm(sz: 9, c: Colors.white70)),
+                                Text('$_viewerCount Viewers', style: dm(sz: 9, c: Colors.white70)),
                                 const SizedBox(width: 4),
                                 if (widget.state.currentGps != null) ...[
                                   const Icon(Icons.location_on, color: C.brand, size: 8),
@@ -716,7 +773,7 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                           ],
                         ),
                       ),
-                      Text('1.2K+', style: syne(sz: 10, w: FontWeight.w900, c: Colors.white)),
+                      Text('$_viewerCount', style: syne(sz: 10, w: FontWeight.w900, c: Colors.white)),
                     ],
                   ),
                 ),
@@ -1039,6 +1096,8 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                     String imageUrl = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30';
                     if (p['thumbnail_url'] != null && p['thumbnail_url'].toString().isNotEmpty) {
                       imageUrl = p['thumbnail_url'];
+                    } else if (p['photos'] is List && (p['photos'] as List).isNotEmpty) {
+                      imageUrl = (p['photos'] as List).first.toString();
                     } else if (p['photos'] != null) {
                       try {
                         final parsed = jsonDecode(p['photos']);
@@ -1071,6 +1130,7 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                           'title': title,
                           'price': price,
                           'image': imageUrl,
+                          'thumbnail_url': imageUrl,
                           'id': p['id'] ?? '',
                         };
                         widget.state.updatePinnedProduct(mapped);
@@ -1087,116 +1147,151 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
     );
   }
 
-  void _showGiftPicker() {
+  Future<void> _showGiftPicker() async {
+    final gifts = await widget.state.fbGifting.fetchGiftItems();
+    if (!mounted) return;
+    var sending = false;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF0C0E14),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (_) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Title/Header Indicator
-              Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(height: 16),
-              
-              // Top Message
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Send a gift to support the streamer!', style: syne(sz: 12, w: FontWeight.bold, c: Colors.white)),
-                  const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 12),
-                ],
-              ),
-              const SizedBox(height: 16),
+        builder: (context, setModalState) {
+          Future<void> sendGift(GiftItem gift) async {
+            if (sending) return;
+            final senderId = widget.state.user?.id;
+            final receiverId = _hostUserId;
+            if (senderId == null || receiverId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Sign in and join a live host before sending gifts.', style: dm())),
+              );
+              return;
+            }
+            if (senderId == receiverId) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('You cannot gift your own live stream.', style: dm())),
+              );
+              return;
+            }
 
-              // Categories Tabs
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: ['Popular', 'New', 'Luxury', 'Fun', 'Bundle'].map((tab) {
-                  final isSelected = tab == 'Popular';
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Text(
-                      tab,
-                      style: syne(
-                        sz: 12,
-                        w: isSelected ? FontWeight.bold : FontWeight.normal,
-                        c: isSelected ? C.brand : Colors.white54,
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
+            setModalState(() => sending = true);
+            final result = await widget.state.fbGifting.sendGift(
+              senderId: senderId,
+              receiverId: receiverId,
+              giftItemId: gift.id,
+              ncxAmount: gift.ncxValue,
+              contextType: 'live_stream',
+              contextId: widget.channelName,
+              contextNote: 'Live gift: ${gift.name}',
+            );
 
-              // Gifts Grid
-              GridView.count(
-                shrinkWrap: true,
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 0.9,
-                children: [
-                  {'name': 'Rose', 'price': 10, 'emoji': '🌹'},
-                  {'name': 'Heart', 'price': 20, 'emoji': '❤️'},
-                  {'name': 'Fire', 'price': 50, 'emoji': '🔥'},
-                  {'name': 'Diamond', 'price': 100, 'emoji': '💎'},
-                  {'name': 'Super Gift', 'price': 200, 'emoji': '🎁'},
-                  {'name': 'King Crown', 'price': 500, 'emoji': '👑'},
-                ].map((g) {
-                  return GestureDetector(
-                    onTap: () {
-                      widget.state.live.sendLiveGift(
-                        widget.channelName, 
-                        widget.state.user?.id ?? 'guest', 
-                        {
-                          'emoji': g['emoji'],
-                          'userName': widget.state.myProfile?['full_name'] ?? 'Viewer',
-                        }
-                      );
-                      Navigator.pop(context);
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
+            if (!mounted) return;
+            if (!result.success) {
+              setModalState(() => sending = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(result.message, style: dm())),
+              );
+              return;
+            }
+
+            await widget.state.live.sendLiveGift(
+              widget.channelName,
+              senderId,
+              {
+                'id': gift.id,
+                'name': gift.name,
+                'emoji': gift.emoji,
+                'price': gift.ncxValue,
+                'giftId': result.giftId,
+                'receiverNcx': result.receiverNcx,
+                'userName': widget.state.myProfile?['full_name'] ?? 'Viewer',
+              },
+            );
+            Navigator.pop(context);
+          }
+
+          return Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Send a gift to support the streamer!', style: syne(sz: 12, w: FontWeight.bold, c: Colors.white)),
+                    if (sending) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: ['Popular', 'New', 'Luxury', 'Fun', 'Bundle'].map((tab) {
+                    final isSelected = tab == 'Popular';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Text(
+                        tab,
+                        style: syne(
+                          sz: 12,
+                          w: isSelected ? FontWeight.bold : FontWeight.normal,
+                          c: isSelected ? C.brand : Colors.white54,
+                        ),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(g['emoji'] as String, style: const TextStyle(fontSize: 32)),
-                          const SizedBox(height: 8),
-                          Text(g['name'] as String, style: dm(sz: 11, w: FontWeight.bold, c: Colors.white)),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.monetization_on, color: Colors.amber, size: 10),
-                              const SizedBox(width: 2),
-                              Text('${g['price']}', style: dm(sz: 10, w: FontWeight.w900, c: Colors.amber)),
-                            ],
-                          ),
-                        ],
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.9,
+                  children: gifts.take(9).map((gift) {
+                    return GestureDetector(
+                      onTap: sending ? null : () => sendGift(gift),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(gift.emoji, style: const TextStyle(fontSize: 32)),
+                            const SizedBox(height: 8),
+                            Text(gift.name, style: dm(sz: 11, w: FontWeight.bold, c: Colors.white), textAlign: TextAlign.center),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.monetization_on, color: Colors.amber, size: 10),
+                                const SizedBox(width: 2),
+                                Text('${gift.ncxValue}', style: dm(sz: 10, w: FontWeight.w900, c: Colors.amber)),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
-
   void _toggleGuestRequest() async {
     if (_isCoHosting) {
       final confirm = await showDialog<bool>(
@@ -1241,23 +1336,26 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
       setState(() => _isRequestPending = false);
       _showToast('Co-hosting request canceled');
     } else {
-      setState(() => _isRequestPending = true);
-      _showToast('Co-hosting request sent to streamer! Waiting for approval...');
-      
-      // Auto-simulate approval in 4 seconds to experience the local layout
-      Future.delayed(const Duration(seconds: 4), () async {
-        if (!mounted || !_isRequestPending || _isCoHosting) return;
-        try {
-          await widget.state.live.switchRoleToBroadcaster();
-          setState(() {
-            _isCoHosting = true;
-            _isRequestPending = false;
-          });
-          _showToast('Request Approved! You are now co-streaming live! 🎉');
-        } catch (e) {
-          debugPrint('Agora switch error: $e');
-        }
-      });
+      final userId = widget.state.user?.id;
+      if (userId == null) {
+        _showToast('Please sign in to request co-hosting.');
+        return;
+      }
+
+      try {
+        await widget.state.live.sendCoHostRequest(
+          widget.channelName,
+          userId,
+          {
+            'name': widget.state.myProfile?['full_name'] ?? widget.state.user?.email ?? 'Viewer',
+            'avatar': widget.state.myProfile?['avatar_url'] ?? '',
+          },
+        );
+        setState(() => _isRequestPending = true);
+        _showToast('Co-hosting request sent to streamer. Waiting for approval...');
+      } catch (e) {
+        _showToast('Could not send co-host request: $e');
+      }
     }
   }
 
@@ -1349,12 +1447,21 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                               Row(
                                 children: [
                                   GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        widget.state.liveGuestRequests.removeAt(idx);
-                                      });
-                                      setModalState(() {});
-                                      _showToast('Declined request from ${req['name']}');
+                                    onTap: () async {
+                                      try {
+                                        await widget.state.live.sendCoHostDecision(
+                                          widget.channelName,
+                                          req['userId'].toString(),
+                                          false,
+                                        );
+                                        setState(() {
+                                          widget.state.liveGuestRequests.removeAt(idx);
+                                        });
+                                        setModalState(() {});
+                                        _showToast('Declined request from ${req['name']}');
+                                      } catch (e) {
+                                        _showToast('Could not decline request: $e');
+                                      }
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(8),
@@ -1367,15 +1474,22 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                                   ),
                                   const SizedBox(width: 12),
                                   GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        final mockUid = 1000 + idx;
-                                        _remoteUids.add(mockUid);
-                                        widget.state.liveGuestRequests.removeAt(idx);
-                                      });
-                                      setModalState(() {});
-                                      _showToast('Accepted request! ${req['name']} is joining stream...');
-                                      Navigator.pop(context);
+                                    onTap: () async {
+                                      try {
+                                        await widget.state.live.sendCoHostDecision(
+                                          widget.channelName,
+                                          req['userId'].toString(),
+                                          true,
+                                        );
+                                        setState(() {
+                                          widget.state.liveGuestRequests.removeAt(idx);
+                                        });
+                                        setModalState(() {});
+                                        _showToast('Accepted request. ${req['name']} can join the stream now.');
+                                        Navigator.pop(context);
+                                      } catch (e) {
+                                        _showToast('Could not accept request: $e');
+                                      }
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(8),

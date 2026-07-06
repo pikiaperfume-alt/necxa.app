@@ -33,6 +33,8 @@ CREATE TABLE listings (
     image_url TEXT,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'sold', 'flagged')),
     ai_verification JSONB,
+    ai_score DOUBLE PRECISION,
+    ai_description TEXT,
     is_active BOOLEAN GENERATED ALWAYS AS (status = 'active') STORED,
     is_verified BOOLEAN DEFAULT FALSE,
     is_honeypot BOOLEAN DEFAULT FALSE,

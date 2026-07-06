@@ -14,7 +14,7 @@ import 'screens/payment_screen.dart';
 import 'screens/transport_screen.dart';
 import 'screens/community_screen.dart';
 import 'screens/listing_wizard_screen.dart';
-import 'screens/driver_registration_screen.dart';
+import 'screens/transport_verification_screen.dart';
 import 'screens/sound_settings_screen.dart';
 import 'screens/privacy_security_screen.dart';
 import 'widgets/gift_float.dart';
@@ -278,7 +278,7 @@ class _RootShellState extends State<RootShell> {
       case 'transport':
         return TransportScreen(state: _state);
       case 'driver-registration':
-        return DriverRegistrationScreen(state: _state);
+        return TransportVerificationScreen(state: _state);
       case 'sound-settings':
         return SoundSettingsScreen(state: _state);
       case 'privacy-security':
