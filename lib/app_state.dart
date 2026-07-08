@@ -326,6 +326,9 @@ class AppState extends ChangeNotifier {
       // 1. Profile & Essential Handshakes
       await loadMyProfile();
       
+      // 1.5. 💰 Wallet Sync — Critical for finance features (gifting, payments, withdrawals)
+      await _syncVault();
+      
       // 2. Social Inbox (Chat Rooms)
       await fetchCreatorConversations(); 
       
@@ -402,7 +405,10 @@ class AppState extends ChangeNotifier {
     Future.microtask(() async {
       await loadMyProfile();
       await loadSecuritySettings();
-
+      // Sync wallet to enable finance features (gifting, payments, etc.)
+      if (isAuthenticated) {
+        await _syncVault();
+      }
     });
 
     // 4. Staggered Modular Loading (Non-critical heavy tasks)
