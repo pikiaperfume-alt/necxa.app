@@ -174,7 +174,7 @@ class NecxaLogo extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.28),
         child: Image.asset(
-          'assets/images/app_icon_padded.png',
+          'assets/images/logo.png',
           fit: BoxFit.contain,
         ),
       ),
