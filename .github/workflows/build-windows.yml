@@ -14,17 +14,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.38.6'
         channel: 'stable'
+        cache: true
 
     - name: Enable Windows Desktop
       run: flutter config --enable-windows-desktop
@@ -32,7 +27,50 @@ jobs:
     - name: Get dependencies
       run: flutter pub get
 
-    - name: Build Windows
+    # ── Pre-download Agora SDKs so CMake skips the download step ──
+    # The cmake file checks if the zip already exists and skips if found.
+    # These are large (~600MB total), so we download them with retry before cmake runs.
+    - name: Pre-download Agora Iris SDK
+      shell: pwsh
+      run: |
+        $iris_url = "https://download.agora.io/sdk/release/iris_4.5.3-build.1_DCG_Windows_Video_Standalone_20260428_1050_31959.zip"
+        $iris_dir = "build\windows\x64\.plugin_symlinks\agora_rtc_engine\windows\third_party\iris"
+        New-Item -ItemType Directory -Force -Path $iris_dir | Out-Null
+        $dest = "$iris_dir\iris_4.5.3-build.1_DCG_Windows_Video_Standalone_20260428_1050_31959.zip"
+        for ($i = 1; $i -le 3; $i++) {
+          try {
+            Write-Host "Downloading Iris SDK (attempt $i)..."
+            Invoke-WebRequest -Uri $iris_url -OutFile $dest -TimeoutSec 600
+            Write-Host "Iris SDK downloaded successfully."
+            break
+          } catch {
+            Write-Host "Attempt $i failed: $_"
+            if ($i -eq 3) { throw }
+            Start-Sleep -Seconds 10
+          }
+        }
+
+    - name: Pre-download Agora Native SDK
+      shell: pwsh
+      run: |
+        $native_url = "https://download.agora.io/sdk/release/Agora_Native_SDK_for_Windows_rel.v4.5.3.70_32091_FULL_20260416_1933_1076734.zip"
+        $native_dir = "build\windows\x64\.plugin_symlinks\agora_rtc_engine\windows\third_party\native"
+        New-Item -ItemType Directory -Force -Path $native_dir | Out-Null
+        $dest = "$native_dir\Agora_Native_SDK_for_Windows_rel.v4.5.3.70_32091_FULL_20260416_1933_1076734.zip"
+        for ($i = 1; $i -le 3; $i++) {
+          try {
+            Write-Host "Downloading Native SDK (attempt $i)..."
+            Invoke-WebRequest -Uri $native_url -OutFile $dest -TimeoutSec 600
+            Write-Host "Native SDK downloaded successfully."
+            break
+          } catch {
+            Write-Host "Attempt $i failed: $_"
+            if ($i -eq 3) { throw }
+            Start-Sleep -Seconds 10
+          }
+        }
+
+    - name: Build Windows Release
       run: flutter build windows --release
 
     - name: Archive Windows Release
