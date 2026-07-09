@@ -12,6 +12,11 @@ class ClipData {
   final double volume;
   final bool isVideo;
   final bool hasAudio;
+  final double scale;
+  final double rotation;
+  final double offsetX;
+  final double offsetY;
+  final double opacity;
 
   const ClipData({
     required this.path,
@@ -21,6 +26,67 @@ class ClipData {
     this.volume = 1.0,
     this.isVideo = true,
     this.hasAudio = true,
+    this.scale = 1.0,
+    this.rotation = 0.0,
+    this.offsetX = 0.0,
+    this.offsetY = 0.0,
+    this.opacity = 1.0,
+  });
+}
+
+class RenderOverlay {
+  final String type;
+  final String? text;
+  final String? imagePath;
+  final double start;
+  final double end;
+  final double x;
+  final double y;
+  final double scale;
+  final double rotation;
+  final double opacity;
+  final double fontSize;
+  final Color color;
+  final Color background;
+  final double backgroundOpacity;
+  final bool shadow;
+
+  const RenderOverlay({
+    required this.type,
+    this.text,
+    this.imagePath,
+    this.start = 0.0,
+    this.end = 1.0,
+    this.x = 0.5,
+    this.y = 0.5,
+    this.scale = 1.0,
+    this.rotation = 0.0,
+    this.opacity = 1.0,
+    this.fontSize = 28.0,
+    this.color = Colors.white,
+    this.background = Colors.black,
+    this.backgroundOpacity = 0.0,
+    this.shadow = true,
+  });
+}
+
+class RenderEffects {
+  final double brightness;
+  final double contrast;
+  final double saturation;
+  final double hue;
+  final double vignette;
+  final double blur;
+  final double grain;
+
+  const RenderEffects({
+    this.brightness = 0.0,
+    this.contrast = 1.0,
+    this.saturation = 1.0,
+    this.hue = 0.0,
+    this.vignette = 0.0,
+    this.blur = 0.0,
+    this.grain = 0.0,
   });
 }
 
@@ -77,6 +143,8 @@ class VideoEnhancementService {
   Future<File?> combineSequence({
     required List<ClipData> clips,
     required String aspectRatio,
+    List<RenderOverlay> overlays = const [],
+    RenderEffects effects = const RenderEffects(),
     String? backgroundMusicPath,
     double musicStart = 0.0,
     double musicEnd = 30.0,
@@ -88,13 +156,23 @@ class VideoEnhancementService {
     if (clips.isEmpty) return null;
     final outputPath = await _getOutputPath();
     
-    // Order of inputs: [0..N-1] clips, then BGM (optional), then Silent Source
+    // Order of inputs: [0..N-1] clips, then overlay images, BGM (optional), voice (optional), then silent source.
     String inputs = "";
     for (int i = 0; i < clips.length; i++) {
       inputs += "-i '${_escapePath(clips[i].path)}' ";
     }
 
     int nextIndex = clips.length;
+    final imageOverlayIndexes = <int, int>{};
+    for (int i = 0; i < overlays.length; i++) {
+      final path = overlays[i].imagePath;
+      if (path != null && path.isNotEmpty) {
+        inputs += "-i '${_escapePath(path)}' ";
+        imageOverlayIndexes[i] = nextIndex;
+        nextIndex++;
+      }
+    }
+
     int? bgmIndex;
     if (backgroundMusicPath != null && backgroundMusicPath.isNotEmpty) {
       inputs += "-i '${_escapePath(backgroundMusicPath)}' ";
@@ -144,12 +222,14 @@ class VideoEnhancementService {
 
       if (clip.isVideo) {
         filterComplex += "[$i:v]trim=start=${clip.start}:end=${clip.end},setpts=${1.0/clip.speed}*(PTS-STARTPTS),fps=30,format=yuv420p,$cropFilter,scale=$targetWidth:$targetHeight,setsar=1";
+        filterComplex += _clipTransformFilter(clip, targetWidth, targetHeight);
         if (safeFade > 0.05) {
           filterComplex += ",fade=t=in:st=0:d=$safeFade,fade=t=out:st=$fadeOutStart:d=$safeFade";
         }
         filterComplex += "[v$i];";
       } else {
         filterComplex += "[$i:v]loop=loop=-1:size=1:start=0,trim=duration=$duration,setpts=PTS-STARTPTS,fps=30,format=yuv420p,$cropFilter,scale=$targetWidth:$targetHeight,setsar=1";
+        filterComplex += _clipTransformFilter(clip, targetWidth, targetHeight);
         if (safeFade > 0.05) {
           filterComplex += ",fade=t=in:st=0:d=$safeFade,fade=t=out:st=${duration - safeFade}:d=$safeFade";
         }
@@ -197,6 +277,39 @@ class VideoEnhancementService {
     } else {
       filterComplex += "[v0]copy[outv];[a0]acopy[outa_orig];";
     }
+
+    String currentVideo = "outv";
+    final visualFilters = _globalVisualFilters(effects, targetWidth, targetHeight);
+    if (visualFilters.isNotEmpty) {
+      filterComplex += "[$currentVideo]$visualFilters[visual_base];";
+      currentVideo = "visual_base";
+    }
+
+    for (int i = 0; i < overlays.length; i++) {
+      final overlay = overlays[i];
+      final nextLabel = "ov$i";
+      final startTime = (overlay.start.clamp(0.0, 1.0) * _timelineDuration(clips)).toStringAsFixed(3);
+      final endTime = (overlay.end.clamp(0.0, 1.0) * _timelineDuration(clips)).toStringAsFixed(3);
+      if (overlay.imagePath != null && imageOverlayIndexes[i] != null) {
+        final imageLabel = "imgov$i";
+        final width = (targetWidth * 0.28 * overlay.scale).clamp(32.0, targetWidth.toDouble()).toStringAsFixed(0);
+        final rotate = overlay.rotation.abs() > 0.001 ? ",rotate=${overlay.rotation}:c=none:ow=rotw(iw):oh=roth(ih)" : "";
+        filterComplex += "[${imageOverlayIndexes[i]}:v]format=rgba,scale=$width:-1$rotate,colorchannelmixer=aa=${overlay.opacity.clamp(0.0, 1.0)}[$imageLabel];";
+        filterComplex += "[$currentVideo][$imageLabel]overlay=x='(W-w)*${overlay.x.clamp(0.0, 1.0)}':y='(H-h)*${overlay.y.clamp(0.0, 1.0)}':enable='between(t,$startTime,$endTime)'[$nextLabel];";
+      } else if ((overlay.text ?? '').trim().isNotEmpty) {
+        final text = _escapeDrawText(overlay.text!.trim());
+        final fontSize = (overlay.fontSize * overlay.scale).clamp(10.0, 96.0).toStringAsFixed(0);
+        final fontColor = _ffmpegColor(overlay.color, overlay.opacity);
+        final boxColor = _ffmpegColor(overlay.background, overlay.backgroundOpacity);
+        final shadow = overlay.shadow ? ":shadowcolor=black@0.65:shadowx=2:shadowy=2" : "";
+        final xExpr = "(w-text_w)*${overlay.x.clamp(0.0, 1.0)}";
+        final yExpr = "(h-text_h)*${overlay.y.clamp(0.0, 1.0)}";
+        filterComplex += "[$currentVideo]drawtext=text='$text':x='$xExpr':y='$yExpr':fontsize=$fontSize:fontcolor=$fontColor:box=1:boxcolor=$boxColor:boxborderw=12$shadow:enable='between(t,$startTime,$endTime)'[$nextLabel];";
+      } else {
+        continue;
+      }
+      currentVideo = nextLabel;
+    }
     
     // 3. MIXING ALL AUDIO SOURCES
     String audioSources = "[outa_orig]";
@@ -223,7 +336,7 @@ class VideoEnhancementService {
     
     // libx264 -crf 26: The "Economical" compression sweet spot
     // -maxrate 2.5M: Prevents bitrate spikes on mobile data
-    String command = "$inputs $silentInput -filter_complex \"$filterComplex\" -map \"[outv]\" -map \"[outa]\" -c:v libx264 -crf 26 -maxrate 2.5M -bufsize 5M -c:a aac -preset fast -pix_fmt yuv420p -movflags +faststart -y \"$outputPath\"";
+    String command = "$inputs $silentInput -filter_complex \"$filterComplex\" -map \"[$currentVideo]\" -map \"[outa]\" -c:v libx264 -crf 26 -maxrate 2.5M -bufsize 5M -c:a aac -preset fast -pix_fmt yuv420p -movflags +faststart -y \"$outputPath\"";
     
     debugPrint('Executing smarter FFmpeg command: $command');
     final session = await FFmpegKit.execute(command);
@@ -255,6 +368,74 @@ class VideoEnhancementService {
   String _escapePath(String path) {
     // Escape single quotes for FFmpeg command line
     return path.replaceAll("'", "'\\''");
+  }
+
+  double _timelineDuration(List<ClipData> clips) {
+    return clips.fold(0.0, (sum, clip) {
+      final duration = (clip.end - clip.start).abs();
+      return sum + (duration < 0.1 ? 1.0 : duration) / clip.speed;
+    }).clamp(0.1, double.infinity).toDouble();
+  }
+
+  String _clipTransformFilter(ClipData clip, int targetWidth, int targetHeight) {
+    final filters = <String>[];
+    if ((clip.scale - 1.0).abs() > 0.01) {
+      final scaledW = (targetWidth * clip.scale).round();
+      final scaledH = (targetHeight * clip.scale).round();
+      filters.add("scale=$scaledW:$scaledH");
+      filters.add("crop=$targetWidth:$targetHeight");
+    }
+    if (clip.rotation.abs() > 0.001) {
+      filters.add("rotate=${clip.rotation}:ow=$targetWidth:oh=$targetHeight:c=black@0");
+    }
+    if (clip.offsetX.abs() > 0.1 || clip.offsetY.abs() > 0.1) {
+      final x = clip.offsetX.round();
+      final y = clip.offsetY.round();
+      filters.add("pad=${targetWidth + x.abs() * 2}:${targetHeight + y.abs() * 2}:${x.abs() + x}:${y.abs() + y}:black");
+      filters.add("crop=$targetWidth:$targetHeight");
+    }
+    if (clip.opacity < 0.99) {
+      filters.add("format=rgba,colorchannelmixer=aa=${clip.opacity.clamp(0.0, 1.0)},format=yuv420p");
+    }
+    return filters.isEmpty ? "" : ",${filters.join(',')}";
+  }
+
+  String _globalVisualFilters(RenderEffects effects, int width, int height) {
+    final filters = <String>[];
+    if (effects.brightness.abs() > 0.001 ||
+        (effects.contrast - 1.0).abs() > 0.001 ||
+        (effects.saturation - 1.0).abs() > 0.001) {
+      filters.add("eq=brightness=${effects.brightness}:contrast=${effects.contrast}:saturation=${effects.saturation}");
+    }
+    if (effects.hue.abs() > 0.001) {
+      filters.add("hue=h=${effects.hue}");
+    }
+    if (effects.blur > 0.05) {
+      filters.add("boxblur=${effects.blur.clamp(0.0, 8.0).toStringAsFixed(1)}:1");
+    }
+    if (effects.grain > 0.01) {
+      final strength = (effects.grain * 18).clamp(1.0, 24.0).toStringAsFixed(1);
+      filters.add("noise=alls=$strength:allf=t");
+    }
+    if (effects.vignette > 0.01) {
+      filters.add("vignette=PI/4");
+    }
+    return filters.join(",");
+  }
+
+  String _ffmpegColor(Color color, double opacity) {
+    // ignore: deprecated_member_use
+    final hex = color.value.toRadixString(16).padLeft(8, '0').substring(2);
+    return "0x$hex@${opacity.clamp(0.0, 1.0).toStringAsFixed(2)}";
+  }
+
+  String _escapeDrawText(String text) {
+    return text
+        .replaceAll("\\", "\\\\")
+        .replaceAll(":", "\\:")
+        .replaceAll("'", "\\'")
+        .replaceAll("%", "\\%")
+        .replaceAll("\n", r"\n");
   }
 
   /// PROXY ENGINE: Generate a lightweight 540p proxy for smooth editing
