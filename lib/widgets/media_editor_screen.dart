@@ -139,6 +139,14 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   // Track selection for focused editing
   String? _selectedTrackId; // 'video', 'music', 'voice', or 'text'
   int _activeNavIndex = 0; // 0: Timeline, 1: Audio, 2: Text, 3: Trans, 4: Settings
+  bool _videoTrackVisible = true;
+  bool _musicTrackVisible = true;
+  bool _voiceTrackVisible = true;
+  bool _textTrackVisible = true;
+  bool _videoTrackLocked = false;
+  bool _musicTrackLocked = false;
+  bool _voiceTrackLocked = false;
+  bool _textTrackLocked = false;
 
   // Undo/Redo Engine
   final List<List<VideoClip>> _history = [];
@@ -775,6 +783,76 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
     );
   }
 
+  void _jumpToPreviousClip() {
+    if (_sequence.isEmpty) return;
+    final nextIndex = (_activeClipIndex - 1).clamp(0, _sequence.length - 1);
+    if (nextIndex != _activeClipIndex) {
+      setState(() => _activeClipIndex = nextIndex);
+      _loadClip(nextIndex);
+    }
+  }
+
+  void _jumpToNextClip() {
+    if (_sequence.isEmpty) return;
+    final nextIndex = (_activeClipIndex + 1).clamp(0, _sequence.length - 1);
+    if (nextIndex != _activeClipIndex) {
+      setState(() => _activeClipIndex = nextIndex);
+      _loadClip(nextIndex);
+    }
+  }
+
+  void _showFullscreenPreview() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.9),
+      builder: (context) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            Positioned.fill(child: Container(color: Colors.black)),
+            SafeArea(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        _circleBtn(Icons.close, () => Navigator.pop(context)),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text('Fullscreen Preview', style: syne(sz: 12, w: FontWeight.w700, c: Colors.white)),
+                        ),
+                        const Spacer(),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 9 / 16,
+                        child: MaskingPreview(
+                          isMasked: _isMaskMode,
+                          onToggle: () => setState(() => _isMaskMode = !_isMaskMode),
+                          overlays: _buildVisibleOverlays(),
+                          child: _buildPreviewLayer(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -834,113 +912,200 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
     return Positioned(
       top: MediaQuery.of(context).padding.top,
       left: 0, right: 0,
-      child: Column(
-        children: [
-          // Top Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.45), blurRadius: 20, offset: const Offset(0, 8))],
+        ),
+        child: Column(
+          children: [
+            Row(
               children: [
                 _circleBtn(Icons.arrow_back_ios_new, () => Navigator.pop(context)),
-                Text('NECXA', style: syne(sz: 18, w: FontWeight.w900, ls: 6, c: Colors.white)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Necxa Studio', style: syne(sz: 16, w: FontWeight.w900, ls: 1.2, c: Colors.white)),
+                      Text('Premium editor workspace', style: dm(sz: 10, c: Colors.white38)),
+                    ],
+                  ),
+                ),
                 GestureDetector(
                   onTap: _onNext,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                       color: C.blue,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: [BoxShadow(color: C.blue.withValues(alpha: 0.3), blurRadius: 10)],
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [BoxShadow(color: C.blue.withValues(alpha: 0.25), blurRadius: 12)],
                     ),
                     child: Text('Export', style: syne(sz: 12, w: FontWeight.w900, c: Colors.white)),
                   ),
                 ),
               ],
             ),
-          ),
-          // Project Meta
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
+            const SizedBox(height: 10),
+            Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text('New Project', style: syne(sz: 14, w: FontWeight.bold, c: Colors.white)),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.edit_outlined, color: Colors.white38, size: 14),
-                      ],
-                    ),
-                    Text('${(_totalDuration ~/ 60)}:${(_totalDuration % 60).toInt().toString().padLeft(2, '0')} · 1080p · 9:16', style: dm(sz: 10, c: Colors.white38)),
-                  ],
-                ),
+                _buildMetaPill(Icons.video_library_outlined, '1080p'),
+                const SizedBox(width: 8),
+                _buildMetaPill(Icons.timer_outlined, '${(_totalDuration ~/ 60)}:${(_totalDuration % 60).toInt().toString().padLeft(2, '0')}'),
+                const SizedBox(width: 8),
+                _buildMetaPill(Icons.aspect_ratio_outlined, '9:16'),
                 const Spacer(),
                 _iconTextBtn(Icons.undo, 'Undo', _undo),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 _iconTextBtn(Icons.redo, 'Redo', _redo),
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
                 _iconTextBtn(Icons.save_outlined, 'Save', _onSaveDraft),
-                const SizedBox(width: 16),
-                _iconTextBtn(Icons.play_circle_outline, 'Preview', _togglePlayback),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProEditorUI() {
-    return Positioned(
-      bottom: 100, // Above bottom nav
-      left: 0, right: 0,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.8)],
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // TIME CODE OVERLAY
-            _buildTimeCodeOverlay(),
-            const SizedBox(height: 16),
-            
-            // PRIMARY TOOLBAR (Media, Audio, Text, Sticker, etc)
-            _buildPrimaryToolbar(),
-            const SizedBox(height: 16),
-            
-            // MULTI-TRACK TIMELINE
-            _buildAdvancedTimeline(),
-            const SizedBox(height: 16),
-            
-            // QUICK ACTION TOOLBAR (Split, Trim, Speed, etc)
-            _buildQuickToolbar(),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _buildTransportButton(Icons.skip_previous_outlined, 'Prev', _jumpToPreviousClip),
+                const SizedBox(width: 8),
+                _buildTransportButton(_isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded, _isPlaying ? 'Pause' : 'Play', _togglePlayback),
+                const SizedBox(width: 8),
+                _buildTransportButton(Icons.skip_next_outlined, 'Next', _jumpToNextClip),
+                const SizedBox(width: 8),
+                _buildTransportButton(Icons.fullscreen_outlined, 'Full', _showFullscreenPreview),
+                const Spacer(),
+                _buildTransportButton(Icons.layers_outlined, 'Layers', () => _feedback('Layer controls ready')),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPrimaryToolbar() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+  Widget _buildMetaPill(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _primaryAction(Icons.image, 'Media', _addClip),
-          _primaryAction(Icons.music_note, 'Audio', _showSoundPicker),
-          _primaryAction(Icons.text_fields, 'Text', _showTextOverlaySheet),
-          _primaryAction(Icons.emoji_emotions, 'Sticker', () => _feedback("Stickers coming soon")),
-          _primaryAction(Icons.auto_awesome, 'Effect', () => _feedback("Effects coming soon")),
-          _primaryAction(Icons.filter_b_and_w, 'Filter', _showFilterSheet),
-          _primaryAction(Icons.tune, 'Adjust', _showAdjustSheet),
+          Icon(icon, color: Colors.white70, size: 12),
+          const SizedBox(width: 6),
+          Text(label, style: syne(sz: 10, w: FontWeight.w700, c: Colors.white70)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransportButton(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: C.brand, size: 14),
+            const SizedBox(width: 6),
+            Text(label, style: syne(sz: 10, w: FontWeight.w700, c: Colors.white70)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProEditorUI() {
+    return Positioned(
+      bottom: 86,
+      left: 0, right: 0,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 22, offset: const Offset(0, -8))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                child: Row(
+                  children: [
+                    Text('Editor Studio', style: syne(sz: 13, w: FontWeight.w900, ls: 1.1, c: Colors.white)),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: C.brand.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text('Layer workflow', style: syne(sz: 10, w: FontWeight.w700, c: C.brand)),
+                    ),
+                  ],
+                ),
+              ),
+              _buildTimeCodeOverlay(),
+              const SizedBox(height: 10),
+              _buildPrimaryToolbar(),
+              const SizedBox(height: 10),
+              _buildAdvancedTimeline(),
+              const SizedBox(height: 10),
+              _buildQuickToolbar(),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryToolbar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                Text('Core tools', style: syne(sz: 10, w: FontWeight.w800, c: Colors.white38, ls: 1.2)),
+                const Spacer(),
+                Text('Organized by workflow', style: syne(sz: 9, w: FontWeight.w600, c: Colors.white24)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _primaryAction(Icons.image, 'Media', _addClip),
+                _primaryAction(Icons.music_note, 'Audio', _showSoundPicker),
+                _primaryAction(Icons.text_fields, 'Text', _showTextOverlaySheet),
+                _primaryAction(Icons.emoji_emotions, 'Sticker', () => _feedback('Stickers coming soon')),
+                _primaryAction(Icons.auto_awesome, 'Effect', () => _feedback('Effects coming soon')),
+                _primaryAction(Icons.filter_b_and_w, 'Filter', _showFilterSheet),
+                _primaryAction(Icons.tune, 'Adjust', _showAdjustSheet),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -949,13 +1114,19 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   Widget _primaryAction(IconData icon, String label, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 24),
-        child: Column(
+      child: Container(
+        margin: const EdgeInsets.only(right: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 22),
-            const SizedBox(height: 6),
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
             Text(label, style: syne(sz: 9, w: FontWeight.bold, c: Colors.white)),
           ],
         ),
@@ -989,36 +1160,35 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   Widget _buildQuickToolbar() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            const SizedBox(width: 8),
-            _quickAction(Icons.content_cut, 'Split', _handleSplit),
-            const SizedBox(width: 16),
-            _quickAction(Icons.crop_rotate, 'Trim', _showTrimSheet),
-            const SizedBox(width: 16),
-            _quickAction(Icons.crop, 'Crop', () => _feedback("Crop coming soon")),
-            const SizedBox(width: 16),
-            _quickAction(Icons.speed, 'Speed', _showSpeedSheet),
-            const SizedBox(width: 16),
-            _quickAction(Icons.volume_up, 'Volume', _showVolumeSheet),
-            const SizedBox(width: 16),
-            _quickAction(Icons.blur_on, 'Fade', () => _feedback("Fade coming soon")),
-            const SizedBox(width: 16),
-            _quickAction(Icons.delete_outline, 'Delete', _handleDeleteClip),
-            const SizedBox(width: 16),
-            _quickAction(Icons.copy, 'Duplicate', () => _feedback("Duplicate coming soon")),
-            const SizedBox(width: 8),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('Quick actions', style: syne(sz: 10, w: FontWeight.w800, c: Colors.white38, ls: 1.2)),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _quickAction(Icons.content_cut, 'Split', _handleSplit),
+                _quickAction(Icons.crop_rotate, 'Trim', _showTrimSheet),
+                _quickAction(Icons.crop, 'Crop', () => _feedback('Crop coming soon')),
+                _quickAction(Icons.speed, 'Speed', _showSpeedSheet),
+                _quickAction(Icons.volume_up, 'Volume', _showVolumeSheet),
+                _quickAction(Icons.blur_on, 'Fade', () => _feedback('Fade coming soon')),
+                _quickAction(Icons.delete_outline, 'Delete', _handleDeleteClip),
+                _quickAction(Icons.copy, 'Duplicate', () => _feedback('Duplicate coming soon')),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1026,13 +1196,22 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   Widget _quickAction(IconData icon, String label, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white70, size: 18),
-          const SizedBox(height: 4),
-          Text(label, style: syne(sz: 8, w: FontWeight.bold, c: Colors.white38)),
-        ],
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white70, size: 15),
+            const SizedBox(width: 6),
+            Text(label, style: syne(sz: 8, w: FontWeight.bold, c: Colors.white38)),
+          ],
+        ),
       ),
     );
   }
@@ -1057,7 +1236,11 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
                   label: 'Video', 
                   color: const Color(0xFF1E293B), 
                   child: _buildProTimeline(),
-                  icon: Icons.movie_outlined
+                  icon: Icons.movie_outlined,
+                  visible: _videoTrackVisible,
+                  locked: _videoTrackLocked,
+                  onVisibilityChanged: (value) => setState(() => _videoTrackVisible = value),
+                  onLockChanged: (value) => setState(() => _videoTrackLocked = value),
                 ),
                 
                 // 3. MUSIC TRACK
@@ -1066,7 +1249,11 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
                     label: 'Background Music', 
                     color: const Color(0xFF4F46E5), 
                     child: _buildAudioTimeline(),
-                    icon: Icons.music_note
+                    icon: Icons.music_note,
+                    visible: _musicTrackVisible,
+                    locked: _musicTrackLocked,
+                    onVisibilityChanged: (value) => setState(() => _musicTrackVisible = value),
+                    onLockChanged: (value) => setState(() => _musicTrackLocked = value),
                   ),
                   
                 // 4. VOICE OVER
@@ -1075,7 +1262,11 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
                     label: 'Voiceover', 
                     color: const Color(0xFF10B981), 
                     child: Container(height: 40, color: Colors.green.withValues(alpha: 0.2)),
-                    icon: Icons.mic
+                    icon: Icons.mic,
+                    visible: _voiceTrackVisible,
+                    locked: _voiceTrackLocked,
+                    onVisibilityChanged: (value) => setState(() => _voiceTrackVisible = value),
+                    onLockChanged: (value) => setState(() => _voiceTrackLocked = value),
                   ),
 
                 // 5. TEXT OVERLAYS
@@ -1084,7 +1275,11 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
                     label: 'Text Overlay', 
                     color: const Color(0xFF0EA5E9), 
                     child: Container(height: 40, color: Colors.blue.withValues(alpha: 0.2)),
-                    icon: Icons.text_fields
+                    icon: Icons.text_fields,
+                    visible: _textTrackVisible,
+                    locked: _textTrackLocked,
+                    onVisibilityChanged: (value) => setState(() => _textTrackVisible = value),
+                    onLockChanged: (value) => setState(() => _textTrackLocked = value),
                   ),
               ],
             ),
@@ -1097,7 +1292,16 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
     );
   }
 
-  Widget _buildTrackLayer({required String label, required Color color, required Widget child, required IconData icon}) {
+  Widget _buildTrackLayer({
+    required String label,
+    required Color color,
+    required Widget child,
+    required IconData icon,
+    required bool visible,
+    required bool locked,
+    required ValueChanged<bool> onVisibilityChanged,
+    required ValueChanged<bool> onLockChanged,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1111,6 +1315,16 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
                 Icon(icon, color: color, size: 10),
                 const SizedBox(width: 4),
                 Text(label, style: syne(sz: 8, w: FontWeight.w900, c: color, ls: 1)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => onVisibilityChanged(!visible),
+                  child: Icon(visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, color: visible ? color : Colors.white24, size: 12),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => onLockChanged(!locked),
+                  child: Icon(locked ? Icons.lock_outlined : Icons.lock_open_outlined, color: locked ? color : Colors.white24, size: 12),
+                ),
               ],
             ),
           ),
