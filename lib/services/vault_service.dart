@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class VaultService {
-  final SupabaseClient client = Supabase.instance.client;
+  SupabaseClient get client => Supabase.instance.client;
   final LocalAuthentication auth = LocalAuthentication();
 
   Future<Map<String, double>> fetchBalances(String userId) async {

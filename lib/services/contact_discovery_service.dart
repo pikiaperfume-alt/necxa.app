@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 class ContactDiscoveryService {
-  final SupabaseClient client = Supabase.instance.client;
+  SupabaseClient get client => Supabase.instance.client;
 
   Future<List<Map<String, dynamic>>> discoverFriends() async {
     try {

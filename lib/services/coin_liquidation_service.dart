@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 class CoinLiquidationService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
   final LocalAuthentication _localAuth = LocalAuthentication();
   
   // Get liquidation quote before selling

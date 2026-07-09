@@ -1376,7 +1376,7 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
             ],
           ),
           const SizedBox(height: 3),
-          Text('${_sequence.length} source item${_sequence.length == 1 ? '' : 's'}', style: dm(sz: 10, c: Colors.white35)),
+          Text('${_sequence.length} source item${_sequence.length == 1 ? '' : 's'}', style: dm(sz: 10, c: Colors.white.withValues(alpha: 0.35))),
           const SizedBox(height: 8),
           Expanded(
             child: _sequence.isEmpty
@@ -1556,7 +1556,7 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
         children: [
           Icon(icon, color: C.brand, size: 15),
           const SizedBox(width: 9),
-          Expanded(child: Text(label, style: dm(sz: 11, c: Colors.white45))),
+          Expanded(child: Text(label, style: dm(sz: 11, c: Colors.white.withValues(alpha: 0.45)))),
           Text(value, style: syne(sz: 11, w: FontWeight.w800, c: Colors.white)),
         ],
       ),
@@ -1590,7 +1590,7 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: syne(sz: 11, w: FontWeight.w900, c: Colors.white)),
-                Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: dm(sz: 9, c: Colors.white35)),
+                Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: dm(sz: 9, c: Colors.white.withValues(alpha: 0.35))),
               ],
             ),
           ),

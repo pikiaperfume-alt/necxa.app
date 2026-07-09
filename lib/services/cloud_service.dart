@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 // ── Necxa Cloud Service (Media & Sync Protocol) ────────────────────────
 class NecxaCloud {
-  final SupabaseClient client = Supabase.instance.client;
+  SupabaseClient get client => Supabase.instance.client;
 
   // ── Storage Node: Uploads ──────────────────────────────────────────
   /// Uploads file to a specific public/private bucket under user's directory.

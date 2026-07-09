@@ -1,0 +1,195 @@
+{"kind":"deck","id":"pr/jy808d","name":"Deck"}
+{"kind":"layout","layoutId":"e7670e04-a2ab-4682-a4a8-a9118412d8fb","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"8b83792a-b250-4774-8299-32388be4b8c8","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/alukiz","slide":1,"title":"NECXA","textShapes":8}
+{"kind":"textbox","id":"sh/w3m94fu1","slide":1,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,42,260,38]}
+{"kind":"textbox","id":"sh/3itgfmlk","slide":1,"text":"PITCH DECK","textPreview":"PITCH DECK","textChars":10,"textLines":1,"bbox":[1000,48,238,28]}
+{"kind":"shape","id":"sh/ex0nuxc3","slide":1,"bbox":[42,112,1196,3]}
+{"kind":"textbox","id":"sh/lwval87e","slide":1,"text":"Necxa makes real-world commerce verifiable.","textPreview":"Necxa makes real-world commerce verifiable.","textChars":43,"textLines":1,"bbox":[42,198,860,170]}
+{"kind":"textbox","id":"sh/wb2hwfyx","slide":1,"text":"A trust platform for property, transport, creator commerce, payments, and AI-backed verification.","textPreview":"A trust platform for property, transport, creator commerce, payments, and AI-backed verification.","textChars":97,"textLines":1,"bbox":[46,410,690,92]}
+{"kind":"shape","id":"sh/3q5o7qpg","slide":1,"bbox":[870,188,368,340]}
+{"kind":"textbox","id":"sh/e9cvixcz","slide":1,"text":"Verified\nTrust\nCommerce","textPreview":"Verified | Trust | Commerce","textChars":23,"textLines":3,"bbox":[910,236,290,170]}
+{"kind":"textbox","id":"sh/l87ed8ba","slide":1,"text":"Identity  Property  Transport  Payments  Creator commerce","textPreview":"Identity  Property  Transport  Payments  Creator commerce","textChars":57,"textLines":1,"bbox":[912,448,268,54]}
+{"kind":"textbox","id":"sh/sneloj2t","slide":1,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/qd4vmtwr","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/alukiz","slide":1,"text":""}
+{"kind":"slide","id":"sl/tjfbme","slide":2,"title":"PROBLEM","textShapes":13}
+{"kind":"textbox","id":"sh/2hwfyxob","slide":2,"text":"PROBLEM","textPreview":"PROBLEM","textChars":7,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/94fu18jq","slide":2,"text":"Fraud breaks trust before transactions even start.","textPreview":"Fraud breaks trust before transactions even start.","textChars":50,"textLines":1,"bbox":[42,82,960,90]}
+{"kind":"shape","id":"sh/kjm1cfa9","slide":2,"bbox":[42,184,1196,3]}
+{"kind":"shape","id":"sh/ra5gbq1o","slide":2,"bbox":[42,232,376,330]}
+{"kind":"textbox","id":"sh/2p8nqxs7","slide":2,"text":"Property","textPreview":"Property","textChars":8,"textLines":1,"bbox":[68,260,300,24]}
+{"kind":"textbox","id":"sh/9gr2p8nq","slide":2,"text":"Fake listings and agents waste money.","textPreview":"Fake listings and agents waste money.","textChars":37,"textLines":1,"bbox":[68,304,310,74]}
+{"kind":"textbox","id":"sh/gvy90je9","slide":2,"text":"Renters and buyers face stolen photos, false locations, recycled documents, and unaccountable middlemen.","textPreview":"Renters and buyers face stolen photos, false locations, recycled documents, and unaccountable middlemen.","textChars":104,"textLines":1,"bbox":[68,402,304,102]}
+{"kind":"shape","id":"sh/re1w7mp0","slide":2,"bbox":[452,232,376,330]}
+{"kind":"textbox","id":"sh/2t83itgf","slide":2,"text":"Transport","textPreview":"Transport","textChars":9,"textLines":1,"bbox":[478,260,300,24]}
+{"kind":"textbox","id":"sh/sneloj2t","slide":2,"text":"Unverified couriers create delivery risk.","textPreview":"Unverified couriers create delivery risk.","textChars":41,"textLines":1,"bbox":[478,304,310,74]}
+{"kind":"textbox","id":"sh/l87ed8ba","slide":2,"text":"Customers need real permits, real plates, and accountable delivery people before handing over goods.","textPreview":"Customers need real permits, real plates, and accountable delivery people before handing over goods.","textChars":100,"textLines":1,"bbox":[478,402,304,102]}
+{"kind":"shape","id":"sh/ahoza1gv","slide":2,"bbox":[862,232,376,330]}
+{"kind":"textbox","id":"sh/32lszqtc","slide":2,"text":"Digital commerce","textPreview":"Digital commerce","textChars":16,"textLines":1,"bbox":[888,260,300,24]}
+{"kind":"textbox","id":"sh/szqtcj6t","slide":2,"text":"Payments move faster than proof.","textPreview":"Payments move faster than proof.","textChars":32,"textLines":1,"bbox":[888,304,310,74]}
+{"kind":"textbox","id":"sh/lkjm1cfa","slide":2,"text":"Marketplace, creator, and live commerce flows need escrow, content safety, and identity-backed trust.","textPreview":"Marketplace, creator, and live commerce flows need escrow, content safety, and identity-backed trust.","textChars":101,"textLines":1,"bbox":[888,402,304,102]}
+{"kind":"textbox","id":"sh/at47y1kr","slide":2,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/3ex0nuxc","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/tjfbme","slide":2,"text":""}
+{"kind":"slide","id":"sl/504pk8","slide":3,"title":"SOLUTION","textShapes":13}
+{"kind":"textbox","id":"sh/szqtcj6t","slide":3,"text":"SOLUTION","textPreview":"SOLUTION","textChars":8,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/3ex0nuxc","slide":3,"text":"Necxa replaces blind trust with verified trust.","textPreview":"Necxa replaces blind trust with verified trust.","textChars":47,"textLines":1,"bbox":[42,82,960,90]}
+{"kind":"shape","id":"sh/at47y1kr","slide":3,"bbox":[42,184,1196,3]}
+{"kind":"shape","id":"sh/l87ed8ba","slide":3,"bbox":[42,232,376,330]}
+{"kind":"textbox","id":"sh/sneloj2t","slide":3,"text":"Verify","textPreview":"Verify","textChars":6,"textLines":1,"bbox":[68,260,300,24]}
+{"kind":"textbox","id":"sh/32lszqtc","slide":3,"text":"People, assets, documents, and media are checked.","textPreview":"People, assets, documents, and media are checked.","textChars":49,"textLines":1,"bbox":[68,304,310,74]}
+{"kind":"textbox","id":"sh/ahoza1gv","slide":3,"text":"AI workflows inspect IDs, selfies, property evidence, driver permits, plates, and content.","textPreview":"AI workflows inspect IDs, selfies, property evidence, driver permits, plates, and content.","textChars":90,"textLines":1,"bbox":[68,402,304,102]}
+{"kind":"shape","id":"sh/lwval87e","slide":3,"bbox":[452,232,376,330]}
+{"kind":"textbox","id":"sh/wb2hwfyx","slide":3,"text":"Protect","textPreview":"Protect","textChars":7,"textLines":1,"bbox":[478,260,300,24]}
+{"kind":"textbox","id":"sh/2lszqtcj","slide":3,"text":"Transactions can move through safer rails.","textPreview":"Transactions can move through safer rails.","textChars":42,"textLines":1,"bbox":[478,304,310,74]}
+{"kind":"textbox","id":"sh/v6psfil0","slide":3,"text":"Wallets, escrow, audit trails, and verified profiles reduce fraud and improve accountability.","textPreview":"Wallets, escrow, audit trails, and verified profiles reduce fraud and improve accountability.","textChars":93,"textLines":1,"bbox":[478,402,304,102]}
+{"kind":"shape","id":"sh/knih4byh","slide":3,"bbox":[862,232,376,330]}
+{"kind":"textbox","id":"sh/d8bat47y","slide":3,"text":"Monetize","textPreview":"Monetize","textChars":8,"textLines":1,"bbox":[888,260,300,24]}
+{"kind":"textbox","id":"sh/29gr2p8n","slide":3,"text":"Creators, agents, vendors, and fleets earn inside one trusted network.","textPreview":"Creators, agents, vendors, and fleets earn inside one trusted network.","textChars":70,"textLines":1,"bbox":[888,304,310,74]}
+{"kind":"textbox","id":"sh/vu9knih4","slide":3,"text":"Necxa connects discovery, trust, payment, delivery, and content commerce.","textPreview":"Necxa connects discovery, trust, payment, delivery, and content commerce.","textChars":73,"textLines":1,"bbox":[888,402,304,102]}
+{"kind":"textbox","id":"sh/kf6dcbul","slide":3,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/d0z61032","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/504pk8","slide":3,"text":""}
+{"kind":"slide","id":"sl/ni7qob","slide":4,"title":"HOW IT WORKS","textShapes":19}
+{"kind":"textbox","id":"sh/ed8bat47","slide":4,"text":"HOW IT WORKS","textPreview":"HOW IT WORKS","textChars":12,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/l0rqd4vm","slide":4,"text":"Necxa turns risky digital activity into verified transactions.","textPreview":"Necxa turns risky digital activity into verified transactions.","textChars":62,"textLines":1,"bbox":[42,82,970,92]}
+{"kind":"shape","id":"sh/wfyxobm5","slide":4,"bbox":[72,258,230,230]}
+{"kind":"textbox","id":"sh/36hcrmhk","slide":4,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[96,284,80,34]}
+{"kind":"textbox","id":"sh/eloj2t83","slide":4,"text":"Capture","textPreview":"Capture","textChars":7,"textLines":1,"bbox":[96,340,168,38]}
+{"kind":"textbox","id":"sh/lc7u54zi","slide":4,"text":"User submits ID, property, plate, permit, media, or payment context.","textPreview":"User submits ID, property, plate, permit, media, or payment context.","textChars":68,"textLines":1,"bbox":[96,404,178,68]}
+{"kind":"textbox","id":"sh/wra5gbq1","slide":4,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[314,338,40,42]}
+{"kind":"shape","id":"sh/7adsji5s","slide":4,"bbox":[364,258,230,230]}
+{"kind":"textbox","id":"sh/epkzupwb","slide":4,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[388,284,80,34]}
+{"kind":"textbox","id":"sh/8jqh0fep","slide":4,"text":"Verify","textPreview":"Verify","textChars":6,"textLines":1,"bbox":[388,340,168,38]}
+{"kind":"textbox","id":"sh/x4nap4r6","slide":4,"text":"AI and backend checks compare documents, location, identity, and content.","textPreview":"AI and backend checks compare documents, location, identity, and content.","textChars":73,"textLines":1,"bbox":[388,404,178,68]}
+{"kind":"textbox","id":"sh/qd4vmtwr","slide":4,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[606,338,40,42]}
+{"kind":"shape","id":"sh/fyxobm58","slide":4,"bbox":[656,258,230,230]}
+{"kind":"textbox","id":"sh/8v6psfil","slide":4,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[680,284,80,34]}
+{"kind":"textbox","id":"sh/xczed8v6","slide":4,"text":"Transact","textPreview":"Transact","textChars":8,"textLines":1,"bbox":[680,340,168,38]}
+{"kind":"textbox","id":"sh/qpg3ex0n","slide":4,"text":"Verified users move through escrow, delivery, listing, gifting, or live commerce.","textPreview":"Verified users move through escrow, delivery, listing, gifting, or live commerce.","textChars":81,"textLines":1,"bbox":[680,404,178,68]}
+{"kind":"textbox","id":"sh/fa9w3m94","slide":4,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[898,338,40,42]}
+{"kind":"shape","id":"sh/8z25kb6x","slide":4,"bbox":[948,258,230,230]}
+{"kind":"textbox","id":"sh/1gvy90je","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[972,284,80,34]}
+{"kind":"textbox","id":"sh/loj2t83i","slide":4,"text":"Audit","textPreview":"Audit","textChars":5,"textLines":1,"bbox":[972,340,168,38]}
+{"kind":"textbox","id":"sh/w3m94fu1","slide":4,"text":"Records create accountability for disputes, trust scores, and repeat use.","textPreview":"Records create accountability for disputes, trust scores, and repeat use.","textChars":73,"textLines":1,"bbox":[972,404,178,68]}
+{"kind":"textbox","id":"sh/3itgfmlk","slide":4,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/ex0nuxc3","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/ni7qob","slide":4,"text":""}
+{"kind":"slide","id":"sl/hsmg4d","slide":5,"title":"PRODUCT","textShapes":13}
+{"kind":"textbox","id":"sh/d4vmtwra","slide":5,"text":"PRODUCT","textPreview":"PRODUCT","textChars":7,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/6dcbulwv","slide":5,"text":"The product is a multi-sided trust network.","textPreview":"The product is a multi-sided trust network.","textChars":43,"textLines":1,"bbox":[42,82,960,90]}
+{"kind":"shape","id":"sh/vy90je9c","slide":5,"bbox":[42,184,1196,3]}
+{"kind":"shape","id":"sh/o7qpg3ex","slide":5,"bbox":[42,232,376,330]}
+{"kind":"textbox","id":"sh/dsji5sne","slide":5,"text":"Verified property","textPreview":"Verified property","textChars":17,"textLines":1,"bbox":[68,260,300,24]}
+{"kind":"textbox","id":"sh/61032lsz","slide":5,"text":"Listings backed by identity, GPS, photos, and document checks.","textPreview":"Listings backed by identity, GPS, photos, and document checks.","textChars":62,"textLines":1,"bbox":[68,304,310,74]}
+{"kind":"textbox","id":"sh/vmtwra5g","slide":5,"text":"Users discover safer housing and agents gain a stronger trust signal.","textPreview":"Users discover safer housing and agents gain a stronger trust signal.","textChars":69,"textLines":1,"bbox":[68,402,304,102]}
+{"kind":"shape","id":"sh/ovahoza1","slide":5,"bbox":[452,232,376,330]}
+{"kind":"textbox","id":"sh/dg7adsji","slide":5,"text":"Verified transport","textPreview":"Verified transport","textChars":18,"textLines":1,"bbox":[478,260,300,24]}
+{"kind":"textbox","id":"sh/1032lszq","slide":5,"text":"Drivers join only after permit, selfie, and plate verification.","textPreview":"Drivers join only after permit, selfie, and plate verification.","textChars":63,"textLines":1,"bbox":[478,304,310,74]}
+{"kind":"textbox","id":"sh/cfa9w3m9","slide":5,"text":"Deliveries become accountable because vehicle and driver evidence is attached.","textPreview":"Deliveries become accountable because vehicle and driver evidence is attached.","textChars":78,"textLines":1,"bbox":[478,402,304,102]}
+{"kind":"shape","id":"sh/judg7ads","slide":5,"bbox":[862,232,376,330]}
+{"kind":"textbox","id":"sh/u9knih4b","slide":5,"text":"Verified creator commerce","textPreview":"Verified creator commerce","textChars":25,"textLines":1,"bbox":[888,260,300,24]}
+{"kind":"textbox","id":"sh/1orytsvu","slide":5,"text":"Live, gifts, media, and shopping work with safety and payments.","textPreview":"Live, gifts, media, and shopping work with safety and payments.","textChars":63,"textLines":1,"bbox":[888,304,310,74]}
+{"kind":"textbox","id":"sh/c7u54zid","slide":5,"text":"Creators earn while users transact in a safer environment.","textPreview":"Creators earn while users transact in a safer environment.","textChars":58,"textLines":1,"bbox":[888,402,304,102]}
+{"kind":"textbox","id":"sh/jm1cfa9w","slide":5,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/u18jqh0f","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/hsmg4d","slide":5,"text":""}
+{"kind":"slide","id":"sl/3dxsj1","slide":6,"title":"MARKET POTENTIAL","textShapes":13}
+{"kind":"textbox","id":"sh/b2hwfyxo","slide":6,"text":"MARKET POTENTIAL","textPreview":"MARKET POTENTIAL","textChars":16,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/4nap4r65","slide":6,"text":"Necxa can scale across high-frequency urban needs.","textPreview":"Necxa can scale across high-frequency urban needs.","textChars":50,"textLines":1,"bbox":[42,82,820,100]}
+{"kind":"shape","id":"sh/t83itgfm","slide":6,"bbox":[42,248,248,210]}
+{"kind":"textbox","id":"sh/m58z25kb","slide":6,"text":"5+","textPreview":"5+","textChars":2,"textLines":1,"bbox":[66,278,192,74]}
+{"kind":"textbox","id":"sh/bq1oryts","slide":6,"text":"Initial city markets across East Africa","textPreview":"Initial city markets across East Africa","textChars":39,"textLines":1,"bbox":[66,376,190,58]}
+{"kind":"shape","id":"sh/4byhgn29","slide":6,"bbox":[330,248,248,210]}
+{"kind":"textbox","id":"sh/twra5gbq","slide":6,"text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[354,278,192,74]}
+{"kind":"textbox","id":"sh/m1cfa9w3","slide":6,"text":"Customer groups: renters, agents, sellers, drivers, creators, merchants, buyers","textPreview":"Customer groups: renters, agents, sellers, drivers, creators, merchants, buyers","textChars":79,"textLines":1,"bbox":[354,376,190,58]}
+{"kind":"shape","id":"sh/bm58z25k","slide":6,"bbox":[618,248,248,210]}
+{"kind":"textbox","id":"sh/val87ed8","slide":6,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[642,278,192,74]}
+{"kind":"textbox","id":"sh/6psfil0r","slide":6,"text":"Transaction surfaces: listings, verification, escrow, delivery, gifts, subscriptions","textPreview":"Transaction surfaces: listings, verification, escrow, delivery, gifts, subscriptions","textChars":84,"textLines":1,"bbox":[642,376,190,58]}
+{"kind":"shape","id":"sh/dcbulwva","slide":6,"bbox":[906,248,248,210]}
+{"kind":"textbox","id":"sh/kre1w7mp","slide":6,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[930,278,192,74]}
+{"kind":"textbox","id":"sh/vixczed8","slide":6,"text":"Unified trust layer across the journey","textPreview":"Unified trust layer across the journey","textChars":38,"textLines":1,"bbox":[930,376,190,58]}
+{"kind":"textbox","id":"sh/2x4nap4r","slide":6,"text":"The opportunity is not a single marketplace category. It is the repeated need to prove trust before money, goods, attention, or access changes hands.","textPreview":"The opportunity is not a single marketplace category. It is the repeated need to prove trust before money, goods, attention, or access ch...","textChars":149,"textLines":1,"bbox":[42,512,780,68]}
+{"kind":"textbox","id":"sh/donyd0z6","slide":6,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/k3q5o7qp","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/3dxsj1","slide":6,"text":""}
+{"kind":"slide","id":"sl/gwl5cx","slide":7,"title":"COMPETITION","textShapes":22}
+{"kind":"textbox","id":"sh/kb6xkf6d","slide":7,"text":"COMPETITION","textPreview":"COMPETITION","textChars":11,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/rqd4vmtw","slide":7,"text":"Competitors solve pieces of the journey; Necxa owns the trust layer.","textPreview":"Competitors solve pieces of the journey; Necxa owns the trust layer.","textChars":68,"textLines":1,"bbox":[42,82,980,92]}
+{"kind":"shape","id":"sh/25kb6xkf","slide":7,"bbox":[42,220,1196,50]}
+{"kind":"textbox","id":"sh/9knih4by","slide":7,"text":"Category","textPreview":"Category","textChars":8,"textLines":1,"bbox":[64,234,190,22]}
+{"kind":"textbox","id":"sh/kzupwb2h","slide":7,"text":"What they do","textPreview":"What they do","textChars":12,"textLines":1,"bbox":[296,234,290,22]}
+{"kind":"textbox","id":"sh/re1w7mp0","slide":7,"text":"Gap Necxa addresses","textPreview":"Gap Necxa addresses","textChars":19,"textLines":1,"bbox":[650,234,510,22]}
+{"kind":"shape","id":"sh/2t83itgf","slide":7,"bbox":[42,270,1196,64]}
+{"kind":"textbox","id":"sh/9gr2p8nq","slide":7,"text":"Classifieds","textPreview":"Classifieds","textChars":11,"textLines":1,"bbox":[64,288,190,26]}
+{"kind":"textbox","id":"sh/gvy90je9","slide":7,"text":"Listings and leads","textPreview":"Listings and leads","textChars":18,"textLines":1,"bbox":[296,288,300,26]}
+{"kind":"textbox","id":"sh/yd0z6103","slide":7,"text":"Weak verification, weak payment protection","textPreview":"Weak verification, weak payment protection","textChars":42,"textLines":1,"bbox":[650,284,520,34]}
+{"kind":"shape","id":"sh/rytsvu9k","slide":7,"bbox":[42,334,1196,64]}
+{"kind":"textbox","id":"sh/gfmlkjm1","slide":7,"text":"Property portals","textPreview":"Property portals","textChars":16,"textLines":1,"bbox":[64,352,190,26]}
+{"kind":"textbox","id":"sh/90je9cvi","slide":7,"text":"Discovery and agent visibility","textPreview":"Discovery and agent visibility","textChars":30,"textLines":1,"bbox":[296,352,300,26]}
+{"kind":"textbox","id":"sh/y1kre1w7","slide":7,"text":"Limited fraud proof across documents and GPS","textPreview":"Limited fraud proof across documents and GPS","textChars":44,"textLines":1,"bbox":[650,348,520,34]}
+{"kind":"shape","id":"sh/rmhk3q5o","slide":7,"bbox":[42,398,1196,64]}
+{"kind":"textbox","id":"sh/g7adsji5","slide":7,"text":"Courier apps","textPreview":"Courier apps","textChars":12,"textLines":1,"bbox":[64,416,190,26]}
+{"kind":"textbox","id":"sh/9s36hcrm","slide":7,"text":"Delivery execution","textPreview":"Delivery execution","textChars":18,"textLines":1,"bbox":[296,416,300,26]}
+{"kind":"textbox","id":"sh/yxobm58z","slide":7,"text":"Driver trust is separate from marketplace trust","textPreview":"Driver trust is separate from marketplace trust","textChars":47,"textLines":1,"bbox":[650,412,520,34]}
+{"kind":"shape","id":"sh/nih4byhg","slide":7,"bbox":[42,462,1196,64]}
+{"kind":"textbox","id":"sh/3m94fu18","slide":7,"text":"Creator platforms","textPreview":"Creator platforms","textChars":17,"textLines":1,"bbox":[64,480,190,26]}
+{"kind":"textbox","id":"sh/a5gbq1or","slide":7,"text":"Reach and monetization","textPreview":"Reach and monetization","textChars":22,"textLines":1,"bbox":[296,480,300,26]}
+{"kind":"textbox","id":"sh/lszqtcj6","slide":7,"text":"Limited real-world transaction assurance","textPreview":"Limited real-world transaction assurance","textChars":40,"textLines":1,"bbox":[650,476,520,34]}
+{"kind":"shape","id":"sh/s72x4nap","slide":7,"bbox":[42,526,1196,64]}
+{"kind":"textbox","id":"sh/3ylc7u54","slide":7,"text":"Necxa","textPreview":"Necxa","textChars":5,"textLines":1,"bbox":[64,544,190,26]}
+{"kind":"textbox","id":"sh/adsji5sn","slide":7,"text":"Verified commerce infrastructure","textPreview":"Verified commerce infrastructure","textChars":32,"textLines":1,"bbox":[296,544,300,26]}
+{"kind":"textbox","id":"sh/h4byhgn2","slide":7,"text":"Identity, property, transport, content, escrow, and creator commerce together","textPreview":"Identity, property, transport, content, escrow, and creator commerce together","textChars":77,"textLines":1,"bbox":[650,540,520,34]}
+{"kind":"textbox","id":"sh/sji5snel","slide":7,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/za1gvy90","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/gwl5cx","slide":7,"text":""}
+{"kind":"slide","id":"sl/xw39jv","slide":8,"title":"BUSINESS MODEL","textShapes":12}
+{"kind":"textbox","id":"sh/tgfmlkjm","slide":8,"text":"BUSINESS MODEL","textPreview":"BUSINESS MODEL","textChars":14,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/mp0bi9s3","slide":8,"text":"Necxa can earn from every verified trust event and every transaction that follows.","textPreview":"Necxa can earn from every verified trust event and every transaction that follows.","textChars":82,"textLines":1,"bbox":[42,82,1040,92]}
+{"kind":"shape","id":"sh/bat47y1k","slide":8,"bbox":[42,230,548,142]}
+{"kind":"textbox","id":"sh/47y1kre1","slide":8,"text":"Verification fees","textPreview":"Verification fees","textChars":17,"textLines":1,"bbox":[70,258,420,34]}
+{"kind":"textbox","id":"sh/tsvu9kni","slide":8,"text":"Property, identity, driver, media, and listing checks","textPreview":"Property, identity, driver, media, and listing checks","textChars":53,"textLines":1,"bbox":[70,312,440,36]}
+{"kind":"shape","id":"sh/m1cfa9w3","slide":8,"bbox":[42,420,548,142]}
+{"kind":"textbox","id":"sh/bm58z25k","slide":8,"text":"Transaction fees","textPreview":"Transaction fees","textChars":16,"textLines":1,"bbox":[70,448,420,34]}
+{"kind":"textbox","id":"sh/4byhgn29","slide":8,"text":"Escrow, payments, delivery, bookings, and marketplace orders","textPreview":"Escrow, payments, delivery, bookings, and marketplace orders","textChars":60,"textLines":1,"bbox":[70,502,440,36]}
+{"kind":"shape","id":"sh/twra5gbq","slide":8,"bbox":[650,230,548,142]}
+{"kind":"textbox","id":"sh/1cfa9w3m","slide":8,"text":"Subscriptions","textPreview":"Subscriptions","textChars":13,"textLines":1,"bbox":[678,258,420,34]}
+{"kind":"textbox","id":"sh/crmhk3q5","slide":8,"text":"Agents, vendors, fleets, and creator tools","textPreview":"Agents, vendors, fleets, and creator tools","textChars":42,"textLines":1,"bbox":[678,312,440,36]}
+{"kind":"shape","id":"sh/j6tovaho","slide":8,"bbox":[650,420,548,142]}
+{"kind":"textbox","id":"sh/ulwval87","slide":8,"text":"Creator commerce","textPreview":"Creator commerce","textChars":16,"textLines":1,"bbox":[678,448,420,34]}
+{"kind":"textbox","id":"sh/1kre1w7m","slide":8,"text":"Gifts, live shopping, premium content, and distribution","textPreview":"Gifts, live shopping, premium content, and distribution","textChars":55,"textLines":1,"bbox":[678,502,440,36]}
+{"kind":"textbox","id":"sh/c3ylc7u5","slide":8,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/ji5snelo","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/xw39jv","slide":8,"text":""}
+{"kind":"slide","id":"sl/3mf7uv","slide":9,"title":"READINESS","textShapes":13}
+{"kind":"textbox","id":"sh/qpg3ex0n","slide":9,"text":"READINESS","textPreview":"READINESS","textChars":9,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/xczed8v6","slide":9,"text":"The build is already organized around real delivery infrastructure.","textPreview":"The build is already organized around real delivery infrastructure.","textChars":67,"textLines":1,"bbox":[42,82,960,90]}
+{"kind":"shape","id":"sh/8v6psfil","slide":9,"bbox":[42,184,1196,3]}
+{"kind":"shape","id":"sh/fyxobm58","slide":9,"bbox":[42,232,376,330]}
+{"kind":"textbox","id":"sh/qd4vmtwr","slide":9,"text":"Mobile app","textPreview":"Mobile app","textChars":10,"textLines":1,"bbox":[68,260,300,24]}
+{"kind":"textbox","id":"sh/x4nap4r6","slide":9,"text":"Flutter product surface","textPreview":"Flutter product surface","textChars":23,"textLines":1,"bbox":[68,304,310,74]}
+{"kind":"textbox","id":"sh/8jqh0fep","slide":9,"text":"Core user journeys exist across property, transport, creator, chat, vault, and live commerce.","textPreview":"Core user journeys exist across property, transport, creator, chat, vault, and live commerce.","textChars":93,"textLines":1,"bbox":[68,402,304,102]}
+{"kind":"shape","id":"sh/fmlkjm1c","slide":9,"bbox":[452,232,376,330]}
+{"kind":"textbox","id":"sh/q1orytsv","slide":9,"text":"Backend","textPreview":"Backend","textChars":7,"textLines":1,"bbox":[478,260,300,24]}
+{"kind":"textbox","id":"sh/4nap4r65","slide":9,"text":"Supabase and Firebase services","textPreview":"Supabase and Firebase services","textChars":30,"textLines":1,"bbox":[478,304,310,74]}
+{"kind":"textbox","id":"sh/t83itgfm","slide":9,"text":"Edge functions, schemas, storage, realtime, wallet, gifting, and order flows support execution.","textPreview":"Edge functions, schemas, storage, realtime, wallet, gifting, and order flows support execution.","textChars":95,"textLines":1,"bbox":[478,402,304,102]}
+{"kind":"shape","id":"sh/mhk3q5o7","slide":9,"bbox":[862,232,376,330]}
+{"kind":"textbox","id":"sh/b2hwfyxo","slide":9,"text":"AI verification","textPreview":"AI verification","textChars":15,"textLines":1,"bbox":[888,260,300,24]}
+{"kind":"textbox","id":"sh/4byhgn29","slide":9,"text":"Document, media, live, and transport checks","textPreview":"Document, media, live, and transport checks","textChars":43,"textLines":1,"bbox":[888,304,310,74]}
+{"kind":"textbox","id":"sh/twra5gbq","slide":9,"text":"Verification workflows connect product actions to AI-backed trust decisions.","textPreview":"Verification workflows connect product actions to AI-backed trust decisions.","textChars":76,"textLines":1,"bbox":[888,402,304,102]}
+{"kind":"textbox","id":"sh/m58z25kb","slide":9,"text":"NECXA","textPreview":"NECXA","textChars":5,"textLines":1,"bbox":[42,662,120,24]}
+{"kind":"textbox","id":"sh/bq1oryts","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1184,662,54,24]}
+{"kind":"notes","id":"nt/3mf7uv","slide":9,"text":""}
+{"kind":"slide","id":"sl/ey2qlu","slide":10,"title":"THE ASK","textShapes":10}
+{"kind":"textbox","id":"sh/u18jqh0f","slide":10,"text":"THE ASK","textPreview":"THE ASK","textChars":7,"textLines":1,"bbox":[42,38,420,28]}
+{"kind":"textbox","id":"sh/1orytsvu","slide":10,"text":"Support Necxa to launch a verified commerce network for everyday trust.","textPreview":"Support Necxa to launch a verified commerce network for everyday trust.","textChars":71,"textLines":1,"bbox":[42,94,940,140]}
+{"kind":"textbox","id":"sh/c7u54zid","slide":10,"text":"Pilot partners","textPreview":"Pilot partners","textChars":14,"textLines":1,"bbox":[42,332,310,38]}
+{"kind":"textbox","id":"sh/judg7ads","slide":10,"text":"Property agents, courier fleets, creators, and merchants","textPreview":"Property agents, courier fleets, creators, and merchants","textChars":56,"textLines":1,"bbox":[42,394,290,64]}
+{"kind":"textbox","id":"sh/u9knih4b","slide":10,"text":"AI and cloud credits","textPreview":"AI and cloud credits","textChars":20,"textLines":1,"bbox":[440,332,310,38]}
+{"kind":"textbox","id":"sh/1032lszq","slide":10,"text":"Scale verification for IDs, documents, plates, and media","textPreview":"Scale verification for IDs, documents, plates, and media","textChars":56,"textLines":1,"bbox":[440,394,290,64]}
+{"kind":"textbox","id":"sh/cfa9w3m9","slide":10,"text":"Market access","textPreview":"Market access","textChars":13,"textLines":1,"bbox":[838,332,310,38]}
+{"kind":"textbox","id":"sh/nyd0z610","slide":10,"text":"Launch city pilots and build verified supply","textPreview":"Launch city pilots and build verified supply","textChars":44,"textLines":1,"bbox":[838,394,290,64]}
+{"kind":"textbox","id":"sh/udg7adsj","slide":10,"text":"Necxa","textPreview":"Necxa","textChars":5,"textLines":1,"bbox":[42,612,180,38]}
+{"kind":"textbox","id":"sh/czed8v6p","slide":10,"text":"Verified trust for real-world commerce","textPreview":"Verified trust for real-world commerce","textChars":38,"textLines":1,"bbox":[880,620,356,28]}
+{"kind":"notes","id":"nt/ey2qlu","slide":10,"text":""}

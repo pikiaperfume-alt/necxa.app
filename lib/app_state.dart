@@ -518,7 +518,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  User? get user => Supabase.instance.client.auth.currentUser;
+  bool get _isSupabaseReady {
+    try {
+      Supabase.instance.client;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  User? get user {
+    if (!_isSupabaseReady) return null;
+    return Supabase.instance.client.auth.currentUser;
+  }
+
   Map<String, dynamic>? myProfile;
   /// Alias so widgets can reference the current user's profile uniformly.
   Map<String, dynamic>? get currentProfile => myProfile;

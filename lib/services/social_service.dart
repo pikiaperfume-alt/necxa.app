@@ -15,7 +15,7 @@ import 'notification_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SocialService {
-  final SupabaseClient client = Supabase.instance.client;
+  SupabaseClient get client => Supabase.instance.client;
   final AppState state;
   
   SocialService(this.state);

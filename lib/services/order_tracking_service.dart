@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../app_state.dart';
 
 class OrderTrackingService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   final AppState state;
 
   OrderTrackingService(this.state);

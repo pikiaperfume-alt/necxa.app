@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'coin_liquidation_service.dart';
 
 class FirebaseLiquidationService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  FirebaseFunctions get _functions => FirebaseFunctions.instance;
   
   // 💹 NCX Economics Node: 1 NCX = 100 UGX (Base Rate)
   static const double NCX_PRICE = 100.0;

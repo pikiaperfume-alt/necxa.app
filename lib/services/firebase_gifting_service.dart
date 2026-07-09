@@ -185,8 +185,8 @@ class GiftStreak {
 // FirebaseGiftingService
 // ═════════════════════════════════════════════════════════════════════════════
 class FirebaseGiftingService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _fn = FirebaseFunctions.instance;
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseFunctions get _fn => FirebaseFunctions.instance;
 
   // ── Catalogue ────────────────────────────────────────────────────────────
 

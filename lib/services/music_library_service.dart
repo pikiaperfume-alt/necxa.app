@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import '../models/music_models.dart';
 
 class MusicLibraryService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  SupabaseClient get _supabase => Supabase.instance.client;
   final AudioPlayer _previewPlayer = AudioPlayer();
 
   // 1. DISCOVERY & SEARCH

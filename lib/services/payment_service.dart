@@ -3,10 +3,10 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:async';
 
 class PaymentService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  FirebaseFunctions get _functions => FirebaseFunctions.instance;
 
-  /// Normalizes phone numbers to 256 format for East African network gateways
+  /// Normalizes phone numbers to 256 format for 256 format for East African network gateways
   String normalizePhone(String phone) {
     String clean = phone.replaceAll(RegExp(r'\D'), '');
     if (clean.startsWith('256')) return clean;

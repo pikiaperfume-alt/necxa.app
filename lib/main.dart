@@ -165,22 +165,34 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   late AppState _state;
 
+  bool get _isSupabaseReady {
+    try {
+      Supabase.instance.client;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _state = widget.state;
     // Listen to ALL state changes so _buildScreen() rebuilds when screen changes
     _state.addListener(_onStateChanged);
-    Supabase.instance.client.auth.onAuthStateChange.listen((e) {
-      _state.onAuthStateChange(e);
-      if (e.session != null) {
+
+    if (_isSupabaseReady) {
+      Supabase.instance.client.auth.onAuthStateChange.listen((e) {
+        _state.onAuthStateChange(e);
+        if (e.session != null) {
+          _state.startSyncEngine();
+        }
+      });
+
+      // Initial start if already authenticated
+      if (_state.isAuthenticated) {
         _state.startSyncEngine();
       }
-    });
-
-    // Initial start if already authenticated
-    if (_state.isAuthenticated) {
-      _state.startSyncEngine();
     }
   }
 
