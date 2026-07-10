@@ -30,9 +30,6 @@ jobs:
     - name: Get dependencies
       run: flutter pub get
 
-    - name: Increase Gradle Heap Size for R8
-      run: echo "org.gradle.jvmargs=-Xmx4g" >> android/gradle.properties
-
     - name: Build Android Release APK
       run: flutter build apk --release --split-per-abi
 
