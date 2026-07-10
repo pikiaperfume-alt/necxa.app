@@ -94,6 +94,8 @@ async function recordLedgerEntry(userId, { type, amount, currency, direction, me
   const typeMap = {
     "buy_coins": "COIN_PURCHASE",
     "listing_unlock": "LISTING_UNLOCK",
+    "feature_unlock": "FEATURE_UNLOCK",
+    "feature_unlock_fee": "PLATFORM_FEE",
     "gift_sent": "GIFT_SENT",
     "gift_received": "GIFT_RECEIVED",
     "gift_fee": "PLATFORM_FEE",
@@ -372,6 +374,66 @@ exports.completeDeliveryTrip = functions.https.onCall(async (data, context) => {
     });
 
     return { success: true, message: "Delivery completed and driver credited." };
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FEATURE UNLOCKS
+// ═══════════════════════════════════════════════════════════════════════════
+
+exports.unlockFeature = functions.https.onCall(async (data, context) => {
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+  const userId = context.auth.uid;
+  const { featureId, ncxCost } = data;
+
+  if (!featureId || !ncxCost || ncxCost <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing required feature parameters (featureId, ncxCost).");
+  }
+
+  return await db.runTransaction(async (tx) => {
+    const walletRef = db.collection("wallets").doc(userId);
+    const walletDoc = await tx.get(walletRef);
+
+    if (!walletDoc.exists) throw new functions.https.HttpsError("not-found", "Wallet not found.");
+    const currentBalance = walletDoc.data().coin_balance || 0;
+
+    if (currentBalance < ncxCost) {
+      throw new functions.https.HttpsError("resource-exhausted", `Insufficient NCX balance. Have: ${currentBalance}, Need: ${ncxCost}`);
+    }
+
+    // 1. Deduct cost from user wallet
+    tx.update(walletRef, {
+      coin_balance: admin.firestore.FieldValue.increment(-ncxCost)
+    });
+
+    // 2. Record that user unlocked the feature
+    const featureUnlockRef = db.collection("user_features").doc(userId).collection("unlocked").doc(featureId);
+    tx.set(featureUnlockRef, {
+        unlocked_at: admin.firestore.FieldValue.serverTimestamp(),
+        cost_ncx: ncxCost,
+    });
+
+    // 3. Ledger Entry for user's expense
+    await recordLedgerEntry(userId, {
+      type: "feature_unlock",
+      amount: ncxCost,
+      currency: "NCX",
+      direction: "out",
+      reference_id: featureId,
+      metadata: { feature: featureId }
+    }, tx);
+
+    // 4. Ledger entry for platform revenue
+    await recordLedgerEntry("platform_revenue", {
+        type: "feature_unlock_fee", // Maps to PLATFORM_FEE
+        amount: ncxCost,
+        currency: "NCX",
+        direction: "in",
+        reference_id: featureId,
+        metadata: { source: "feature_unlock", user_id: userId }
+    }, tx);
+
+    return { success: true, message: `Feature ${featureId} unlocked successfully!` };
   });
 });
 
