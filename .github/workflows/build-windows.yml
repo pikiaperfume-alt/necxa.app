@@ -127,12 +127,21 @@ jobs:
     - name: Build Windows Release
       run: flutter build windows --release
 
-    - name: Setup Inno Setup
-      uses: Miniong/setup-inno-setup@v1
+    - name: Install Inno Setup
+      shell: pwsh
+      run: |
+        choco install innosetup --yes --no-progress
+        $isccPath = Join-Path $env:ProgramFiles(x86) 'Inno Setup 6\ISCC.exe'
+        if (-not (Test-Path $isccPath)) {
+          throw "ISCC.exe not found at $isccPath"
+        }
+        Write-Host "ISCC path: $isccPath"
 
     - name: Build Windows Installer
-      # This command runs the Inno Setup compiler on the script we just created.
-      run: iscc.exe "windows\packaging\inno_setup.iss"
+      shell: pwsh
+      run: |
+        $isccPath = Join-Path $env:ProgramFiles(x86) 'Inno Setup 6\ISCC.exe'
+        & $isccPath "windows\packaging\inno_setup.iss"
 
     - name: Archive Windows Installer
       uses: actions/upload-artifact@v4
