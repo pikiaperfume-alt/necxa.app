@@ -16,6 +16,9 @@ import 'package:video_compress/video_compress.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'necxa_camera_capture_screen.dart';
 import '../main.dart' show cameras;
+import '../app_state.dart';
+import '../models/music_models.dart';
+import '../services/draft_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/media_compression_service.dart';
 import '../data.dart';
@@ -95,6 +98,7 @@ class _UploadScreenState extends State<UploadScreen>
   // -- Audio / Recording --
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
+  File? _audioFile;
   String? _audioPath;
   bool _isPlaying = false;
   final Duration _recDuration = Duration.zero;

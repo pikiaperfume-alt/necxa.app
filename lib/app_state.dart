@@ -2114,7 +2114,7 @@ class AppState extends ChangeNotifier {
       final userMsg = ChatMessage(
         id: 'u-${DateTime.now().millisecondsSinceEpoch}', 
         conversationId: 'ai-chat', 
-        senderId: user?.id ?? 'u', 
+        senderId: user?.id ?? 'local_user', 
         content: query, 
         createdAt: DateTime.now()
       );
