@@ -445,8 +445,9 @@ class _MsgBubble extends StatelessWidget {
 
     Gradient? bubbleGrad;
     if (isMe && !isSystem) {
-      if (theme == 'neon_cyan_green') bubbleGrad = neonCyanGreen;
-      else if (theme == 'orange_neon_purple') bubbleGrad = neonOrangePurple;
+      if (theme == 'neon_cyan_green') {
+        bubbleGrad = neonCyanGreen;
+      } else if (theme == 'orange_neon_purple') bubbleGrad = neonOrangePurple;
       else if (theme == 'yellow_neon_pink') bubbleGrad = neonYellowPink;
       else bubbleGrad = LinearGradient(colors: [C.brand, C.brand.withOpacity(.8)]);
     }
@@ -786,7 +787,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> with SingleTickerProviderSta
                 const SizedBox(height: 4),
                 // Duration
                 Text(
-                  '${VoiceNoteService.formatDuration(_isPlaying || _position.inSeconds > 0 ? _position : _total)}',
+                  VoiceNoteService.formatDuration(_isPlaying || _position.inSeconds > 0 ? _position : _total),
                   style: TextStyle(fontSize: 10, color: accent.withOpacity(0.7)),
                 ),
               ],

@@ -44,7 +44,7 @@ class _VoiceNoteRecorderState extends State<VoiceNoteRecorder> {
                 size: const Size(double.infinity, 40),
                 recorderController: widget.state.recorderController,
                 enableGesture: false,
-                waveStyle: WaveStyle(
+                waveStyle: const WaveStyle(
                   waveColor: C.brand,
                   showMiddleLine: false,
                   spacing: 4,

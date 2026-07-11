@@ -1297,7 +1297,7 @@ class AppState extends ChangeNotifier {
     if (user != null) {
       try {
         final result = await fbGifting.sendGift(
-          senderId: user!.id,
+          senderId: user.id,
           receiverId: receiverId ?? 'platform_recipient', // default if missing from UI
           giftItemId: name.toLowerCase(),
           ncxAmount: price,
@@ -1981,7 +1981,7 @@ class AppState extends ChangeNotifier {
 
     // 1. 📁 WHATSAPP-STYLE: Handle Local Media immediately
     if (isMediaLocal) {
-      finalLocalPath = await _persistMedia(File(mediaUrl!), 'sent');
+      finalLocalPath = await _persistMedia(File(mediaUrl), 'sent');
     } else {
       finalNetworkUrl = mediaUrl;
     }
@@ -2009,7 +2009,7 @@ class AppState extends ChangeNotifier {
     if (isMediaLocal && resolvedType != 'voice') {
       try {
         final uploadRes = await cloud.uploadMedia(
-          File(finalLocalPath ?? mediaUrl!),
+          File(finalLocalPath ?? mediaUrl),
           bucket: 'chat-media',
           assetType: 'chat_attachment',
         );
@@ -2120,15 +2120,6 @@ class AppState extends ChangeNotifier {
       );
       chatLog.add(userMsg);
       await localDb.saveMessages([userMsg]);
-      
-      final contextData = {
-        'identityShardId': identityShardId,
-        'utilityShardId': utilityShardId,
-        'isVerifying': isVerifying,
-        'verificationStep': verificationSubStep,
-        'user_name': myProfile?['full_name'] ?? 'Necxa User',
-        'language': language,
-      };
 
       // Prefer the Cloudflare Worker (Llama 3.1 — zero-cost edge inference).
       // Falls back to Supabase necxa-chat automatically if the worker is down.
@@ -2451,7 +2442,7 @@ class AppState extends ChangeNotifier {
       }
 
       final res = await query.order('created_at', ascending: false);
-      if (res != null && (res as List).isNotEmpty) {
+      if ((res as List).isNotEmpty) {
         final list = List<Map<String, dynamic>>.from(res);
         await localDb.saveTransportOrders(list);
         await localDb.setSyncCursor('transport', list.first['created_at']);

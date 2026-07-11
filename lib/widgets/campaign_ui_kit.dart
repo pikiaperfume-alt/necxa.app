@@ -34,16 +34,16 @@ class ObjectiveCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isSelected 
-              ? colors 
-              : [colors[0].withOpacity(0.1), colors[1].withOpacity(0.05)],
+            colors: isSelected
+              ? colors
+              : [colors[0].withAlpha(26), colors[1].withAlpha(13)],
           ),
           border: Border.all(
-            color: isSelected ? Colors.white : colors[0].withOpacity(0.3),
+            color: isSelected ? Colors.white : colors[0].withAlpha(77),
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected ? [
-            BoxShadow(color: colors[0].withOpacity(0.4), blurRadius: 20, spreadRadius: 0)
+            BoxShadow(color: colors[0].withAlpha(102), blurRadius: 20, spreadRadius: 0)
           ] : [],
         ),
         child: ClipRRect(
@@ -52,7 +52,7 @@ class ObjectiveCard extends StatelessWidget {
             children: [
               Positioned(
                 right: -10, bottom: -10,
-                child: Icon(icon, color: Colors.white.withOpacity(0.05), size: 100),
+                child: Icon(icon, color: Colors.white.withAlpha(13), size: 100),
               ),
               Padding(
                 padding: const EdgeInsets.all(20),
@@ -61,7 +61,7 @@ class ObjectiveCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isSelected ? Colors.black26 : colors[0].withOpacity(0.2),
+                        color: isSelected ? Colors.black26 : colors[0].withAlpha(51),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(icon, color: isSelected ? Colors.white : colors[0], size: 28),
@@ -85,8 +85,8 @@ class ObjectiveCard extends StatelessWidget {
                           Text(
                             subtitle, 
                             style: dm(
-                              sz: 12, 
-                              c: isSelected ? Colors.white.withOpacity(0.8) : Colors.white54
+                              sz: 12,
+                              c: isSelected ? Colors.white.withAlpha(204) : Colors.white54
                             )
                           ),
                         ],
@@ -136,7 +136,7 @@ class PremiumStepper extends StatelessWidget {
                     color: active ? accentColor : Colors.white12,
                     borderRadius: BorderRadius.circular(2),
                     boxShadow: active ? [
-                      BoxShadow(color: accentColor.withOpacity(0.4), blurRadius: 4)
+                      BoxShadow(color: accentColor.withAlpha(102), blurRadius: 4)
                     ] : [],
                   ),
                 ),
@@ -171,7 +171,7 @@ class GlassCard extends StatelessWidget {
       height: height,
       padding: padding ?? const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: Colors.white.withAlpha(8),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white10),
       ),
@@ -204,7 +204,7 @@ class TimelineTrack extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.white.withOpacity(0.05) : Colors.transparent,
+        color: isSelected ? Colors.white.withAlpha(13) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -236,7 +236,7 @@ class TimelineTrack extends StatelessWidget {
                 child: Container(
                   height: 24,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.6),
+                    color: color.withAlpha(153),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: color),
                   ),

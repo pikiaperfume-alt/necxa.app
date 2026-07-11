@@ -7,13 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:async';
 import '../theme.dart';
-import '../app_state.dart';
 import 'pro_media_editor_screen.dart';
 import '../widgets/campaign_ui_kit.dart';
 import '../utils/content_sanitizer.dart';
-import '../utils/media_helpers.dart';
-import '../models/music_models.dart';
-import '../services/draft_service.dart';
 import '../services/music_library_service.dart';
 import 'policies_screen.dart';
 import 'package:video_compress/video_compress.dart';
@@ -66,25 +62,6 @@ extension CreatorTypeX on CreatorType {
 }
 
 // ══════════════════════════════════════════════════════════════
-// SYNTH MOODS
-// ══════════════════════════════════════════════════════════════
-const _synthMoods = [
-  _SynthMood('Dark Pulse',    [Color(0xFF0a0a1a), Color(0xFF1a0a3a)], '🌑'),
-  _SynthMood('Vibrant City',  [Color(0xFF1a0040), Color(0xFFFF0099)], '🌆'),
-  _SynthMood('Cosmic',        [Color(0xFF000428), Color(0xFF004e92)], '🌌'),
-  _SynthMood('Neon Grid',     [Color(0xFF000000), Color(0xFF00ff88)], '⚡'),
-  _SynthMood('Golden Hour',   [Color(0xFF1a0a00), Color(0xFFFF8C00)], '🌅'),
-  _SynthMood('Deep Sea',      [Color(0xFF001a2e), Color(0xFF006994)], '🌊'),
-];
-
-class _SynthMood {
-  final String name;
-  final List<Color> colors;
-  final String emoji;
-  const _SynthMood(this.name, this.colors, this.emoji);
-}
-
-// ══════════════════════════════════════════════════════════════
 // UPLOAD SCREEN
 // ══════════════════════════════════════════════════════════════
 class UploadScreen extends StatefulWidget {
@@ -112,17 +89,15 @@ class _UploadScreenState extends State<UploadScreen>
   MusicTrack? _bakedTrack; 
   File? _visualFile;       
   List<File> _multiFiles = [];
-  List<File> _productPhotos = []; // 📸 Miniature product photos for Sales
+  final List<File> _productPhotos = []; // 📸 Miniature product photos for Sales
   bool _isVideo = false;
   
   // -- Audio / Recording --
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
-  File? _audioFile;
   String? _audioPath;
-  bool _isRecording = false;
   bool _isPlaying = false;
-  Duration _recDuration = Duration.zero;
+  final Duration _recDuration = Duration.zero;
   Timer? _recTimer;
 
   // -- Artist Hub --
@@ -132,8 +107,8 @@ class _UploadScreenState extends State<UploadScreen>
   // -- Layers --
   List<Map<String, dynamic>> _overlays = [];
   File? _voiceOverFile;
-  Map<int, double> _startOffsets = {};
-  Map<int, double> _endOffsets = {};
+  final Map<int, double> _startOffsets = {};
+  final Map<int, double> _endOffsets = {};
 
   // ── Setup Metadata ──────────────────────────────────────────
   final TextEditingController _titleController = TextEditingController();
@@ -146,21 +121,17 @@ class _UploadScreenState extends State<UploadScreen>
   String _title = '';
   String _desc  = '';
   String _tags  = '';
-  String _category = 'Standard';
+  final String _category = 'Standard';
   String _price    = '';
   String _sku      = '';
   String _stock    = '';
   Map<String, dynamic>? _linkedListing;
 
   // ── Sync State ──────────────────────────────────────────────
-  bool _isProcessing = false;
+  final bool _isProcessing = false;
   bool _isOptimizing = false;
   String _optimizingStatus = "";
   bool _agreedToPolicies = false;
-
-  // ── Animations ──────────────────────────────────────────────
-  late AnimationController _pulseCtrl;
-  late Animation<double> _pulseAnim;
 
   @override
   void initState() {
@@ -170,10 +141,6 @@ class _UploadScreenState extends State<UploadScreen>
       _title = _bakedTrack!.title;
       _titleController.text = _title;
     }
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))
-      ..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     _titleController.addListener(() => _title = _titleController.text);
     _descController.addListener(() => _desc = _descController.text);
@@ -185,7 +152,6 @@ class _UploadScreenState extends State<UploadScreen>
 
   @override
   void dispose() {
-    _pulseCtrl.dispose();
     _recTimer?.cancel();
     _recorder.dispose();
     _player.dispose();
@@ -198,34 +164,17 @@ class _UploadScreenState extends State<UploadScreen>
     super.dispose();
   }
 
-  void _clearState() {
-    setState(() {
-      _step = 0;
-      _objectiveId = null;
-      _visualFile = null;
-      _multiFiles = [];
-      _title = '';
-      _desc = '';
-      _tags = '';
-      _price = '';
-      _sku = '';
-      _agreedToPolicies = false;
-      _bakedTrack = widget.initialTrack;
-    });
-  }
-
   // ── Helpers ───────────────────────────────────────────────────
   void _err(String m) => ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(m), backgroundColor: C.red));
 
-  String _fmtDur(Duration d) => MediaHelpers.formatDuration(d);
-
   List<String> _cleanTags(String raw) => ContentSanitizer.generateUnifiedTagPayload(raw, _desc);
-
 
   // ── Media pickers ─────────────────────────────────────────────
   Future<void> _processResult(XFile? f, bool isVideo, {bool isFastSync = false}) async {
-    if (f == null) return;
+    if (f == null) {
+      return;
+    }
     final file = File(f.path);
     if (!mounted) return;
     final result = await Navigator.push(
@@ -317,61 +266,7 @@ class _UploadScreenState extends State<UploadScreen>
     await _processResult(f, false);
   }
 
-  Future<void> _captureImage() async {
-    final f = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 70);
-    await _processResult(f, false);
-  }
-
-  Widget _editorAction(IconData icon, String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleAvatar(backgroundColor: Colors.white10, radius: 30, child: Icon(icon, color: Colors.white, size: 28)),
-          const SizedBox(height: 8),
-          Text(label, style: syne(sz: 12, c: Colors.white)),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _pickAudioFile() async {
-    final res = await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (res != null && res.files.single.path != null) {
-      setState(() { _audioFile = File(res.files.single.path!); _audioPath = res.files.single.path; });
-    }
-  }
-
-  Future<void> _pickArtistPhoto(bool isCover) async {
-    final f = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (f != null) {
-      setState(() {
-        if (isCover) _beatCoverFile = File(f.path);
-        else _artistArtFile = File(f.path);
-      });
-    }
-  }
-
   // ── Audio recording ───────────────────────────────────────────
-  Future<void> _startRecording() async {
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) { _err('Microphone permission required'); return; }
-    final dir  = await getTemporaryDirectory();
-    final path = '${dir.path}/necxa_rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
-    _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _recDuration += const Duration(seconds: 1));
-    });
-    setState(() { _isRecording = true; _recDuration = Duration.zero; _audioPath = path; });
-  }
-
-  Future<void> _stopRecording() async {
-    final path = await _recorder.stop();
-    _recTimer?.cancel();
-    if (path != null) setState(() { _audioFile = File(path); _isRecording = false; });
-  }
-
   Future<void> _togglePlay() async {
     if (_audioPath == null) return;
     if (_isPlaying) {
@@ -552,7 +447,6 @@ class _UploadScreenState extends State<UploadScreen>
 
   Future<void> _dispatchSalesCampaign() async {
     final media = await _optimizeMediaAssets();
-    final visualUrl = media['visualUrl'] as String?;
     final multiUrls = media['multiUrls'] as List<String>;
     final mediaType = media['mediaType'] as String?;
     
@@ -575,7 +469,7 @@ class _UploadScreenState extends State<UploadScreen>
       await Supabase.instance.client
           .from('listings')
           .update({
-            'media_url': visualUrl,
+            'media_url': media['visualUrl'],
             'media_type': mediaType,
             'photos': productPhotoUrls.isNotEmpty 
                       ? productPhotoUrls 
@@ -590,7 +484,7 @@ class _UploadScreenState extends State<UploadScreen>
         'price': _price,
         'sku': _sku.isNotEmpty ? _sku : 'SKU-${DateTime.now().millisecondsSinceEpoch}',
         'category': _category,
-        'media_url': visualUrl, // Film Hub / Video Content
+        'media_url': media['visualUrl'], // Film Hub / Video Content
         'thumbnail_url': media['thumbUrl'],
         'media_type': mediaType,
         'type': 'COMMERCIAL',
@@ -630,7 +524,7 @@ class _UploadScreenState extends State<UploadScreen>
     final mediaType = media['mediaType'] as String?;
     final thumbUrl = media['thumbUrl'] as String?;
 
-    String? audioUrl;
+    String? audioUrl = _bakedTrack?.audioUrl;
     if (_audioFile != null) {
       final res = await widget.state.cloud.uploadMedia(_audioFile!, bucket: 'community-media', assetType: 'audio');
       audioUrl = res?['url'] as String?;
@@ -660,7 +554,7 @@ class _UploadScreenState extends State<UploadScreen>
       'thumbnail_url': thumbUrl,
       'media_type': mediaType,
       'media_asset_id': mediaAssetId,
-      'audio_url': audioUrl ?? _bakedTrack?.audioUrl,
+      'audio_url': audioUrl,
       'music_track_id': _bakedTrack?.id,
       'creator_mode': 'artist',
       'is_fast_sync': true,
@@ -690,7 +584,7 @@ class _UploadScreenState extends State<UploadScreen>
     final mediaType = media['mediaType'] as String?;
     final thumbUrl = media['thumbUrl'] as String?;
 
-    String? audioUrl;
+    String? audioUrl = _bakedTrack?.audioUrl;
     if (_audioFile != null) {
       final res = await widget.state.cloud.uploadMedia(_audioFile!, bucket: 'community-media', assetType: 'audio');
       audioUrl = res?['url'] as String?;
@@ -719,7 +613,7 @@ class _UploadScreenState extends State<UploadScreen>
       'thumbnail_url': thumbUrl,
       'media_type': mediaType,
       'media_asset_id': mediaAssetId,
-      'audio_url': audioUrl ?? _bakedTrack?.audioUrl,
+      'audio_url': audioUrl,
       'music_track_id': _bakedTrack?.id,
       'creator_mode': 'unified',
       'is_fast_sync': true,
@@ -853,7 +747,7 @@ class _UploadScreenState extends State<UploadScreen>
           title: 'Awareness',
           subtitle: 'Community contribution & Social synergy',
           icon: Icons.auto_awesome,
-          colors: [const Color(0xFF00E5FF), const Color(0xFF3B82F6)],
+          colors: const [Color(0xFF00E5FF), Color(0xFF3B82F6)],
           isSelected: _objectiveId == 'awareness',
           onTap: () => setState(() => _objectiveId = 'awareness'),
         ),
@@ -861,7 +755,7 @@ class _UploadScreenState extends State<UploadScreen>
           title: 'Conversion',
           subtitle: 'Artist Hub. Digital collectibles & Audio visual releases',
           icon: Icons.library_music,
-          colors: [const Color(0xFFA855F7), const Color(0xFF7B2FFF)],
+          colors: const [Color(0xFFA855F7), Color(0xFF7B2FFF)],
           isSelected: _objectiveId == 'conversion',
           onTap: () {
             if (!widget.state.isArtist) { widget.state.go('artist_auth'); return; }
@@ -872,7 +766,7 @@ class _UploadScreenState extends State<UploadScreen>
           title: 'Sales',
           subtitle: 'Catalog-based commerce & Product listings',
           icon: Icons.shopping_bag_outlined,
-          colors: [const Color(0xFFF4A228), const Color(0xFFEF4444)],
+          colors: const [Color(0xFFF4A228), Color(0xFFEF4444)],
           isSelected: _objectiveId == 'sales',
           onTap: () => setState(() => _objectiveId = 'sales'),
         ),
@@ -938,7 +832,7 @@ class _UploadScreenState extends State<UploadScreen>
                     width: 80,
                     margin: const EdgeInsets.only(right: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: Colors.white.withAlpha(13),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white10, style: BorderStyle.solid),
                     ),
@@ -981,83 +875,6 @@ class _UploadScreenState extends State<UploadScreen>
         _productPhotos.addAll(images.map((x) => File(x.path)));
       });
     }
-  }
-
-  void _showProductPicker() async {
-    final listings = await widget.state.social.fetchUserListings(widget.state.user?.id ?? 'c1');
-    
-    if (!mounted) return;
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: C.bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 24),
-            Text('SELECT PRODUCT', style: syne(sz: 14, w: FontWeight.w900, ls: 2)),
-            const SizedBox(height: 24),
-            Expanded(
-              child: listings.isEmpty 
-                ? Center(child: Text('NO PRODUCTS IN SHOWCASE', style: syne(sz: 11, c: Colors.white24)))
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: listings.length,
-                    itemBuilder: (context, i) {
-                      final l = listings[i];
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _linkedListing = l;
-                            _titleController.text = l['title'] ?? '';
-                            _priceController.text = (l['price'] ?? '').toString();
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(l['media_url'] ?? '', width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Icon(Icons.shopping_bag)),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(l['title'] ?? 'Product', style: syne(sz: 13, w: FontWeight.bold)),
-                                    Text(ugx((l['price'] ?? 0).toDouble()), style: dm(sz: 12, c: C.brand)),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.add_circle_outline, color: C.brand, size: 20),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ── STEP 2: FILM HUB ────────────────────────────────────────
@@ -1125,9 +942,9 @@ class _UploadScreenState extends State<UploadScreen>
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: C.brand.withOpacity(0.1),
+                color: C.brand.withAlpha(26),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: C.brand.withOpacity(0.3)),
+                border: Border.all(color: C.brand.withAlpha(77)),
               ),
               child: Row(
                 children: [
@@ -1240,7 +1057,7 @@ class _UploadScreenState extends State<UploadScreen>
           height: 160,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.white.withAlpha(13),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.white10),
           ),
@@ -1284,7 +1101,7 @@ class _UploadScreenState extends State<UploadScreen>
               top: 4, right: 4,
               child: GestureDetector(
                 onTap: () => setState(() => _multiFiles.removeAt(i)),
-                child: CircleAvatar(radius: 10, backgroundColor: Colors.black54, child: const Icon(Icons.close, size: 12, color: Colors.white)),
+                child: const CircleAvatar(radius: 10, backgroundColor: Colors.black54, child: Icon(Icons.close, size: 12, color: Colors.white)),
               ),
             ),
             if (_multiFiles[i].path.toLowerCase().endsWith('.mp4'))
@@ -1295,14 +1112,6 @@ class _UploadScreenState extends State<UploadScreen>
     );
   }
 
-  Widget _srcBtn(String label, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      height: 48,
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white10)),
-      child: Center(child: Text(label, style: syne(sz: 13, w: FontWeight.w700))),
-    ),
-  );
   Widget _buildPrimaryAction(Color accent) {
     String label = 'Next';
     if (_step == 0) label = 'Configure Setup';
@@ -1346,14 +1155,14 @@ class _UploadScreenState extends State<UploadScreen>
               SizedBox(
                 width: 120, height: 120,
                 child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(C.brand.withOpacity(0.2)),
+                  valueColor: AlwaysStoppedAnimation<Color>(C.brand.withAlpha(51)),
                   strokeWidth: 2,
                 ),
               ),
-              SizedBox(
+              const SizedBox(
                 width: 100, height: 100,
                 child: CircularProgressIndicator(
-                  valueColor: const AlwaysStoppedAnimation<Color>(C.brand),
+                  valueColor: AlwaysStoppedAnimation<Color>(C.brand),
                   strokeWidth: 4,
                 ),
               ),
@@ -1382,7 +1191,7 @@ class _UploadScreenState extends State<UploadScreen>
               return Column(
                 children: [
                   Text(
-                    _isOptimizing ? _optimizingStatus.toUpperCase() : messages[value].toUpperCase(), 
+                    _isOptimizing ? _optimizingStatus.toUpperCase() : messages[value].toUpperCase(),
                     style: syne(sz: 10, w: FontWeight.bold, c: _isOptimizing ? C.brand : Colors.white70, ls: 1.5)
                   ),
                   const SizedBox(height: 8),
@@ -1412,78 +1221,6 @@ class _UploadScreenState extends State<UploadScreen>
       ),
     );
   }
-
-  Widget _buildDraftsGallery() {
-    return FutureBuilder<List<DraftPost>>(
-      future: widget.state.drafts.getDrafts(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
-        final drafts = snapshot.data!;
-        
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Drafts', style: syne(sz: 18, w: FontWeight.w900)),
-                Text('${drafts.length} total', style: dm(sz: 12, c: C.dim)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 160,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: drafts.length,
-                itemBuilder: (context, i) {
-                  final d = drafts[i];
-                  return GestureDetector(
-                    onTap: () => _resumeDraft(d),
-                    child: Container(
-                      width: 110,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white10,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          const Center(child: Icon(Icons.movie_outlined, color: Colors.white24, size: 32)),
-                          Positioned(
-                            bottom: 8, left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
-                              child: const Icon(Icons.history, color: C.brand, size: 10),
-                            ),
-                          ),
-                          Positioned(
-                            top: 4, right: 4,
-                            child: IconButton(
-                              icon: const Icon(Icons.close, color: Colors.white38, size: 14),
-                              onPressed: () async {
-                                await widget.state.drafts.deleteDraft(d.id);
-                                setState(() {});
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _resumeDraft(DraftPost d) async {
     final file = File(d.mediaPath);
     if (!await file.exists()) {

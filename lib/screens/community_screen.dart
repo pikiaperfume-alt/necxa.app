@@ -319,11 +319,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 }
                               },
                               itemBuilder: (context, index) {
-                                if (index >= items.length)
+                                if (index >= items.length) {
                                   return const SizedBox.shrink();
+                                }
                                 final item = items[index];
-                                if (item == null)
-                                  return const SizedBox.shrink();
 
                                 if (_selectedTab == 0) {
                                   return _ReelItem(
@@ -839,7 +838,7 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
 
   // ── New UX States ──
   bool _isExpanded = false;
-  bool _isDescExpanded = false;
+  final bool _isDescExpanded = false;
   bool _isCleanMode = false;
   bool _showCleanHint = false;
   late AnimationController _pulseController;
@@ -883,11 +882,12 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
         await _audioPlayer.setReleaseMode(ReleaseMode.loop);
         await _audioPlayer.setSourceUrl(audioUrl);
         await _audioPlayer.resume();
-        if (mounted)
+        if (mounted) {
           setState(() {
             _audioInitialized = true;
             _isPlaying = true;
           });
+        }
       } catch (e) {
         debugPrint('Feed Audio Player Error: $e');
       }
@@ -951,10 +951,11 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
     // Optimistic UI update
     setState(() {
       _isLiked = !_isLiked;
-      if (_isLiked)
+      if (_isLiked) {
         _likesCount++;
-      else
+      } else {
         _likesCount--;
+      }
     });
 
     // Background push
@@ -965,10 +966,11 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _isLiked = !_isLiked;
-          if (_isLiked)
+          if (_isLiked) {
             _likesCount++;
-          else
+          } else {
             _likesCount--;
+          }
         });
       }
     }
@@ -1137,10 +1139,11 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
                         lowDataMode: widget.state.isDataSaverMode,
                         onToggle: (playing) => setState(() {
                           _isPlaying = playing;
-                          if (playing)
+                          if (playing) {
                             _discController.repeat();
-                          else
+                          } else {
                             _discController.stop();
+                          }
                         }),
                       )
                     : GestureDetector(
@@ -1221,7 +1224,7 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
                 // Scrim
                 IgnorePointer(
                   child: Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
@@ -2018,7 +2021,7 @@ class _ReelItemState extends State<_ReelItem> with TickerProviderStateMixin {
                       ),
                     ),
                     Text(
-                      ugx(price as num),
+                      ugx(price),
                       style: dm(
                         sz: 11,
                         w: FontWeight.bold,
@@ -2309,7 +2312,7 @@ class _ShopReelItemState extends State<_ShopReelItem>
           child: IgnorePointer(
             ignoring: true,
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
@@ -2598,13 +2601,8 @@ class _ShopReelItemState extends State<_ShopReelItem>
             child: CircleAvatar(
               radius: 21,
               backgroundColor: const Color(0xFF0A0F2C),
-              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-              child: photoUrl == null
-                  ? Text(
-                      username.isNotEmpty ? username[0].toUpperCase() : 'V',
-                      style: syne(c: Colors.white, w: FontWeight.bold),
-                    )
-                  : null,
+              backgroundImage: NetworkImage(photoUrl),
+              child: null,
             ),
           ),
 
@@ -3064,13 +3062,14 @@ class _CommentSheetState extends State<_CommentSheet> {
                     );
                   }
                   final comments = snapshot.data ?? [];
-                  if (comments.isEmpty)
+                  if (comments.isEmpty) {
                     return Center(
                       child: Text(
                         'Be the first to share your thoughts.',
                         style: dm(sz: 13, c: Colors.white24),
                       ),
                     );
+                  }
 
                   return ListView.builder(
                     controller: scrollController,

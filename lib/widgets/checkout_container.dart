@@ -817,10 +817,12 @@ class _CheckoutContainerState extends State<CheckoutContainer> {
                 ? widget.state.orders.streamOrder(_currentOrderId!)
                 : const Stream.empty(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting)
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
-              if (!snapshot.hasData || snapshot.data?.data() == null)
+              }
+              if (!snapshot.hasData || snapshot.data?.data() == null) {
                 return const Text('Waiting for order confirmation...');
+              }
 
               final data = snapshot.data!.data() as Map<String, dynamic>;
               final history = data['tracking_history'] as List? ?? [];

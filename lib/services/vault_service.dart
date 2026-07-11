@@ -93,7 +93,7 @@ class VaultService {
     try {
       return await auth.authenticate(
         localizedReason: 'AUTHENTICATE TO ACCESS VAULT EXTRACTION',
-        options: AuthenticationOptions(
+        options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: true,
         ),

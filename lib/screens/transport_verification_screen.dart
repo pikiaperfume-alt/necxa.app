@@ -24,13 +24,14 @@ class _TransportVerificationScreenState extends State<TransportVerificationScree
   Map<String, dynamic>? _result;
 
   Future<void> _pickImage(int step) async {
-    final source = ImageSource.camera;
+    const source = ImageSource.camera;
     final picked = await _picker.pickImage(source: source, imageQuality: 80);
     
     if (picked != null) {
       setState(() {
-        if (step == 1) _selfieFile = File(picked.path);
-        else if (step == 2) _permitFile = File(picked.path);
+        if (step == 1) {
+          _selfieFile = File(picked.path);
+        } else if (step == 2) _permitFile = File(picked.path);
         else if (step == 3) _vehicleFile = File(picked.path);
       });
     }

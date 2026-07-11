@@ -100,7 +100,7 @@ class HomeScreen extends StatelessWidget {
                     border: Border.all(color: C.brand, width: 1.5),
                     image: url != null ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
                   ),
-                  child: url == null ? Icon(Icons.person, color: C.brand, size: 20) : null,
+                  child: url == null ? const Icon(Icons.person, color: C.brand, size: 20) : null,
                 );
               }
             ),

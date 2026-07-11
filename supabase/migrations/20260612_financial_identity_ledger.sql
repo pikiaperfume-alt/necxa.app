@@ -42,6 +42,7 @@ create table if not exists immutable_financial_ledger (
   
   entry_type          text not null check (entry_type in (
     'COIN_PURCHASE',    -- purchase NCX coins
+    'WALLET_DEPOSIT',   -- direct fiat deposit into wallet
     'LISTING_UNLOCK',   -- unlock contact details
     'ESCROW_DEPOSIT',   -- reserve property/goods
     'ESCROW_RELEASE',   -- complete deal & pay seller/broker

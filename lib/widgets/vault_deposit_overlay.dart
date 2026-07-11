@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import '../theme.dart';
 import '../app_state.dart';
-import 'dart:ui';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class VaultDepositOverlay extends StatefulWidget {
   final AppState state;
@@ -12,219 +13,239 @@ class VaultDepositOverlay extends StatefulWidget {
 }
 
 class _VaultDepositOverlayState extends State<VaultDepositOverlay> {
-  int _stage = 1; // 1: Amount, 2: Method, 3: Handshake, 4: Success
-  final TextEditingController _amtCtrl = TextEditingController();
-  String _selectedAmount = '50,000';
+  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  String _selectedPaymentMethod = 'momo'; // Default to mobile money
+  bool _loading = false;
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _phoneController.text = widget.state.myProfile?['phone'] ?? '';
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0d121b),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-        border: Border(top: BorderSide(color: Colors.white12)),
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Column(
-            children: [
-              _buildHeader(),
-              Expanded(child: _buildStageContent()),
-            ],
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D121B),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Drag Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('DEPOSIT FIAT (UGX)', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 1)),
+                  const SizedBox(height: 24),
+                  
+                  // Amount Input
+                  Text('AMOUNT (UGX)', style: syne(sz: 11, w: FontWeight.w900, c: Colors.white38, ls: 1)),
+                  const SizedBox(height: 12),
+                  _buildAmountInput(),
+
+                  const SizedBox(height: 24),
+                  Text('PHONE NUMBER FOR PAYMENT', style: syne(sz: 11, w: FontWeight.w900, c: Colors.white38, ls: 1)),
+                  const SizedBox(height: 12),
+                  _buildPhoneInput(),
+
+                  const SizedBox(height: 32),
+                  Text('PAYMENT METHOD', style: syne(sz: 11, w: FontWeight.w900, c: Colors.white38, ls: 1)),
+                  const SizedBox(height: 12),
+                  _payOption('Mobile Money', 'MTN / Airtel', 'momo', Icons.phone_android_outlined),
+                  const SizedBox(height: 12),
+                  _payOption('Visa / Mastercard', 'Debit or Credit Card', 'card', Icons.credit_card_outlined),
+                  
+                  const SizedBox(height: 32),
+                  _actionButton('Deposit Funds', _handlePayment, loading: _loading),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white10))),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Add Money', style: syne(sz: 18, w: FontWeight.w700, c: Colors.white)),
-              Text('Step $_stage of 4', style: dm(sz: 11, c: Colors.white38)),
-            ],
-          ),
-          IconButton(icon: const Icon(Icons.close, color: Colors.white38), onPressed: () => Navigator.pop(context)),
-        ],
+  Widget _buildAmountInput() {
+    return TextFormField(
+      controller: _amountController,
+      keyboardType: TextInputType.number,
+      style: syne(sz: 24, w: FontWeight.bold, c: Colors.white),
+      decoration: InputDecoration(
+        hintText: '0',
+        hintStyle: syne(sz: 24, w: FontWeight.bold, c: Colors.white24),
+        prefixText: 'UGX ',
+        prefixStyle: syne(sz: 14, w: FontWeight.bold, c: Colors.white38),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: C.brand)),
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please enter an amount';
+        }
+        final amount = double.tryParse(value);
+        if (amount == null || amount < 500) {
+          return 'Minimum deposit is UGX 500';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _buildPhoneInput() {
+    return TextFormField(
+      controller: _phoneController,
+      keyboardType: TextInputType.phone,
+      style: syne(sz: 16, w: FontWeight.bold, c: Colors.white),
+      decoration: InputDecoration(
+        hintText: 'e.g. 07...',
+        hintStyle: syne(sz: 16, w: FontWeight.bold, c: Colors.white24),
+        prefixIcon: const Icon(Icons.phone_outlined, color: C.brand, size: 20),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: C.brand)),
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Phone number is required';
+        }
+        if (value.length < 10) {
+          return 'Enter a valid phone number';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _payOption(String label, String sub, String val, IconData icon) {
+    final active = _selectedPaymentMethod == val;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedPaymentMethod = val),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: active ? C.brand.withOpacity(0.15) : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: active ? C.brand : Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: active ? C.brand : Colors.white38, size: 24),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: syne(sz: 14, w: FontWeight.bold, c: Colors.white)),
+                Text(sub, style: dm(sz: 11, c: Colors.white38)),
+              ],
+            ),
+            const Spacer(),
+            Icon(
+              active ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: active ? C.brand : Colors.white10,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildStageContent() {
-    switch (_stage) {
-      case 1: return _buildAmountStage();
-      case 2: return _buildMethodStage();
-      case 3: return _buildHandshakeStage();
-      case 4: return _buildSuccessStage();
-      default: return const SizedBox();
+  Widget _actionButton(String label, VoidCallback onTap, {bool loading = false}) {
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: C.brand,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: C.brand.withOpacity(0.3), blurRadius: 15)],
+        ),
+        child: Center(
+          child: loading
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+              : Text(label.toUpperCase(), style: syne(sz: 14, w: FontWeight.w900, c: Colors.black, ls: 1.5)),
+        ),
+      ),
+    );
+  }
+
+  void _handlePayment() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    setState(() => _loading = true);
+    final amount = double.tryParse(_amountController.text);
+    if (amount == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    try {
+      final res = await widget.state.firebaseVault.initiatePesapalPayment(
+        amount: amount,
+        currency: 'UGX',
+        description: 'Necxa Wallet Top-up',
+        type: 'wallet_topup', // The new type for direct fiat deposit
+        email: widget.state.user?.email ?? 'guest@necxa.com',
+        phone: _phoneController.text,
+      );
+
+      if (res['success'] == true) {
+        final redirectUrl = res['redirect_url'];
+        if (await canLaunchUrlString(redirectUrl)) {
+          await launchUrlString(redirectUrl, mode: LaunchMode.externalApplication);
+        }
+        Navigator.pop(context); // Close the sheet
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Complete payment in the window that opened. Your balance will update shortly.')),
+        );
+      } else {
+        throw Exception(res['message'] ?? 'Failed to initiate Pesapal payment.');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
-
-  Widget _buildAmountStage() {
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Quick amounts', style: dm(sz: 12, w: FontWeight.w600, c: Colors.white38)),
-          const SizedBox(height: 16),
-          _AmountGrid(
-            selected: _selectedAmount,
-            onSelect: (s) => setState(() { _selectedAmount = s; _amtCtrl.text = s.replaceAll(',', ''); }),
-          ),
-          const SizedBox(height: 40),
-          Text('Custom amount', style: dm(sz: 12, w: FontWeight.w600, c: Colors.white38)),
-          const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(color: Colors.white.withOpacity(.02), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(.08))),
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: TextField(
-              controller: _amtCtrl,
-              keyboardType: TextInputType.number,
-              style: syne(sz: 24, w: FontWeight.w700, c: Colors.white),
-              decoration: const InputDecoration(hintText: 'Enter UGX amount...', hintStyle: TextStyle(color: Colors.white10), border: InputBorder.none, suffixText: 'UGX', suffixStyle: TextStyle(color: Colors.white38)),
-            ),
-          ),
-          const Spacer(),
-          _BottomBtn(label: 'Continue', onTap: () => setState(() => _stage = 2)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMethodStage() {
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('How would you like to pay?', style: dm(sz: 12, w: FontWeight.w600, c: Colors.white38)),
-          const SizedBox(height: 24),
-          const _MethodTile(icon: Icons.phone_android, label: 'MTN Mobile Money', sub: 'Linked: +256 701 *** 567', color: Color(0xFFeab308)),
-          const SizedBox(height: 16),
-          const _MethodTile(icon: Icons.phone_android, label: 'Airtel Money', sub: 'Linked: +256 755 *** 789', color: Colors.red),
-          const SizedBox(height: 16),
-          const _MethodTile(icon: Icons.credit_card, label: 'Visa Card', sub: 'Debit: **** 4022', color: Colors.blue),
-          const SizedBox(height: 16),
-          _LinkNodeBtn(),
-          const Spacer(),
-          _BottomBtn(label: 'Continue', onTap: () => setState(() => _stage = 3)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHandshakeStage() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _MatrixScanner(),
-        const SizedBox(height: 40),
-        Text('Confirm your identity', style: syne(sz: 16, w: FontWeight.w700, c: Colors.white)),
-        const SizedBox(height: 8),
-        Text('Touch to verify it\'s you...', style: dm(sz: 12, c: Colors.white38)),
-        const SizedBox(height: 40),
-        _BottomBtn(label: 'Confirm & Deposit', onTap: () => _finalizeInjection()),
-      ],
-    );
-  }
-
-  void _finalizeInjection() async {
-    final amt = double.tryParse(_amtCtrl.text.isEmpty ? _selectedAmount.replaceAll(',', '') : _amtCtrl.text) ?? 50000;
-    await widget.state.depositFiat(amt);
-    setState(() => _stage = 4);
-  }
-
-  Widget _buildSuccessStage() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: const Color(0xFF22c55e).withOpacity(.1), shape: BoxShape.circle), child: const Icon(Icons.check_circle_outline, color: Color(0xFF22c55e), size: 72)),
-          const SizedBox(height: 32),
-          Text('Done!', style: syne(sz: 28, w: FontWeight.w700, c: Colors.white)),
-          const SizedBox(height: 12),
-          Text('Money added to your balance.', style: dm(sz: 14, c: Colors.white38)),
-          const SizedBox(height: 48),
-          _BottomBtn(label: 'Back to Wallet', onTap: () => Navigator.pop(context)),
-        ],
-      ),
-    );
-  }
-}
-
-class _AmountGrid extends StatelessWidget {
-  final String selected;
-  final Function(String) onSelect;
-  const _AmountGrid({required this.selected, required this.onSelect});
-  @override
-  Widget build(BuildContext context) => GridView.count(shrinkWrap: true, crossAxisCount: 2, mainAxisSpacing: 16, crossAxisSpacing: 16, childAspectRatio: 2.2, children: ['50,000', '100,000', '250,000', '500,000'].map((s) => _BagBtn(label: s, active: selected == s, onTap: () => onSelect(s))).toList());
-}
-
-class _BagBtn extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _BagBtn({required this.label, required this.active, required this.onTap});
-  @override
-  Widget build(BuildContext context) => GestureDetector(onTap: onTap, child: AnimatedContainer(duration: const Duration(milliseconds: 200), decoration: BoxDecoration(color: active ? Colors.white : Colors.white.withOpacity(.02), borderRadius: BorderRadius.circular(16), border: Border.all(color: active ? Colors.white : Colors.white.withOpacity(.1))), child: Center(child: Text(label, style: syne(sz: 16, w: FontWeight.w900, c: active ? Colors.black : Colors.white60)))));
-}
-
-class _MethodTile extends StatelessWidget {
-  final IconData icon;
-  final String label, sub;
-  final Color color;
-  const _MethodTile({required this.icon, required this.label, required this.sub, required this.color});
-  @override
-  Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(.03), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(.05))), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withOpacity(.15), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: color, size: 20)), const SizedBox(width: 16), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: syne(sz: 13, w: FontWeight.w800, c: Colors.white)), Text(sub, style: dm(sz: 11, c: Colors.white38))]), const Spacer(), const Icon(Icons.chevron_right, color: Colors.white24)]));
-}
-
-class _LinkNodeBtn extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)), child: Center(child: Text('+ Add a new payment method', style: syne(sz: 13, w: FontWeight.w600, c: Colors.white38))));
-}
-
-class _MatrixScanner extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(width: 140, height: 140, decoration: BoxDecoration(color: Colors.white.withOpacity(.03), borderRadius: BorderRadius.circular(40), border: Border.all(color: Colors.blue.withOpacity(.2))), child: Stack(alignment: Alignment.center, children: [Icon(Icons.fingerprint, color: Colors.blue.withOpacity(.4), size: 64), Container(width: 100, height: 2, color: Colors.blue.withOpacity(.6))]));
-}
-
-class _BottomBtn extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _BottomBtn({required this.label, required this.onTap});
-  @override
-  Widget build(BuildContext context) => GestureDetector(onTap: onTap, child: Container(height: 64, width: double.infinity, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.white.withOpacity(.1), blurRadius:20)]), child: Center(child: Text(label, style: syne(sz: 16, w: FontWeight.w700, c: Colors.black)))));
-}
-
-class BorderDash extends ShapeBorder {
-  final List<double> dashPattern;
-  const BorderDash(this.dashPattern);
-  @override
-  EdgeInsetsGeometry get dimensions => EdgeInsets.zero;
-  @override
-  Path getInnerPath(Rect rect, {TextDirection? textDirection}) => Path();
-  @override
-  Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
-    final path = Path()..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(20)));
-    return path;
-  }
-  @override
-  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    final paint = Paint()..color = Colors.white10..style = PaintingStyle.stroke..strokeWidth = 1.5;
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(20));
-    canvas.drawRRect(rrect, paint); // Simplify: just draw border for now as custom dash is complex in ShapeBorder
-  }
-  @override
-  ShapeBorder scale(double t) => this;
 }

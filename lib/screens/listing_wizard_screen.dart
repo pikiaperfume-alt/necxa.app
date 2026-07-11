@@ -686,7 +686,7 @@ class _Step3Identity extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(color: C.brand),
+                      const CircularProgressIndicator(color: C.brand),
                       const SizedBox(height: 16),
                       Text('NEURAL SYNTHESIS IN PROGRESS...', style: syne(sz: 10, c: C.brand, ls: 2, w: FontWeight.w800)),
                     ],

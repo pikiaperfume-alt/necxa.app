@@ -35,7 +35,7 @@ class CoinLiquidationService {
       
       final authenticated = await _localAuth.authenticate(
         localizedReason: 'Verify your identity to liquidate NCX coins',
-        options: AuthenticationOptions(
+        options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: true,
         ),
@@ -113,7 +113,7 @@ class LiquidationQuote {
     required this.effectiveRate,
   });
   
-  String get burnMessage => '${burnPercentage}% will be burned (${ncxBurned.toStringAsFixed(2)} NCX)';
+  String get burnMessage => '$burnPercentage% will be burned (${ncxBurned.toStringAsFixed(2)} NCX)';
   String get receiveMessage => 'You receive ${ugxReceived.toStringAsFixed(2)} UGX';
 }
 

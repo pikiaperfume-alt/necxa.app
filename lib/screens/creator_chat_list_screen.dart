@@ -193,7 +193,7 @@ class _NotificationTile extends StatelessWidget {
                     children: [
                       Text(notif.title, style: syne(sz: 14, w: notif.isRead ? FontWeight.w600 : FontWeight.w900)),
                       if (!notif.isRead)
-                        Container(width: 8, height: 8, decoration: BoxDecoration(color: C.brand, shape: BoxShape.circle)),
+                        Container(width: 8, height: 8, decoration: const BoxDecoration(color: C.brand, shape: BoxShape.circle)),
                     ],
                   ),
                   const SizedBox(height: 6),

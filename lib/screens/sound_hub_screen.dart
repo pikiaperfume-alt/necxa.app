@@ -90,7 +90,7 @@ class _SoundHubScreenState extends State<SoundHubScreen> {
                 height: 120,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 20)],
+                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20)],
                   image: widget.track.albumArtUrl != null
                       ? DecorationImage(image: NetworkImage(widget.track.albumArtUrl!), fit: BoxFit.cover)
                       : null,

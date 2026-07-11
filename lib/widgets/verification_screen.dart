@@ -76,7 +76,7 @@ class _VerificationDemoScreenState extends State<VerificationDemoScreen> {
               ),
               child: Column(
                 children: [
-                  Text('🛡️', style: const TextStyle(fontSize: 48)),
+                  const Text('🛡️', style: TextStyle(fontSize: 48)),
                   const SizedBox(height: 12),
                   Text(_status, style: syne(sz: 14), textAlign: TextAlign.center),
                   if (_sessionId != null) ...[
@@ -88,7 +88,7 @@ class _VerificationDemoScreenState extends State<VerificationDemoScreen> {
             ),
             const SizedBox(height: 40),
             if (_isProcessing)
-              CircularProgressIndicator(color: C.brand)
+              const CircularProgressIndicator(color: C.brand)
             else ...[
               SizedBox(
                 width: double.infinity,
@@ -109,11 +109,11 @@ class _VerificationDemoScreenState extends State<VerificationDemoScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _runFaceOnly,
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: C.brand),
+                    side: const BorderSide(color: C.brand),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  icon: Icon(Icons.face, color: C.brand),
+                  icon: const Icon(Icons.face, color: C.brand),
                   label: Text('Face ID Only', style: syne(c: C.brand, w: FontWeight.w700)),
                 ),
               ),

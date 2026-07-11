@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Necxa Payment</title>
+    <style>
+        body {
+            background-color: #030A14;
+            color: #F0F4FF;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .container {
+            padding: 40px;
+            background-color: #0A1324;
+            border-radius: 24px;
+            border: 1px solid #1A263D;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+        }
+        .icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #00E5FF;
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+        p {
+            font-size: 14px;
+            color: #8A9AB2;
+            line-height: 1.6;
+        }
+        .order-id {
+            font-size: 12px;
+            color: #5A6A82;
+            margin-top: 20px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✅</div>
+        <h1>Payment Processing</h1>
+        <p>Your payment has been received and is being processed. Your wallet balance will be updated shortly.</p>
+        <p>You can now safely close this window and return to the Necxa app.</p>
+        <div class="order-id" id="order-info"></div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const orderId = urlParams.get('orderId');
+            if (orderId) {
+                document.getElementById('order-info').textContent = 'Order ID: ' + orderId;
+            }
+        };
+    </script>
+</body>
+</html>

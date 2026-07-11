@@ -63,7 +63,7 @@ class _AiChatModalState extends State<AiChatModal> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.blue.withOpacity(.1), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: Colors.blue.withAlpha(26), borderRadius: BorderRadius.circular(12)),
             child: const Icon(Icons.auto_awesome, color: Colors.blue, size: 20),
           ),
           const SizedBox(width: 16),
@@ -108,7 +108,7 @@ class _AiChatModalState extends State<AiChatModal> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.bolt, color: Colors.blue.withOpacity(.2), size: 64),
+          Icon(Icons.bolt, color: Colors.blue.withAlpha(51), size: 64),
           const SizedBox(height: 24),
           Text('HOW CAN I ASSIST YOU?', style: syne(sz: 12, w: FontWeight.w800, ls: 4, c: Colors.white24)),
           const SizedBox(height: 8),
@@ -118,7 +118,7 @@ class _AiChatModalState extends State<AiChatModal> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(.05),
+              color: Colors.white.withAlpha(13),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.white10),
             ),
@@ -170,7 +170,7 @@ class _AiChatModalState extends State<AiChatModal> {
         children: [
           Expanded(
             child: Container(
-              decoration: BoxDecoration(color: Colors.white.withOpacity(.05), borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(color: Colors.white.withAlpha(13), borderRadius: BorderRadius.circular(16)),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _msgCtrl,
@@ -205,12 +205,12 @@ class _ChatBubble extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isUser ? Colors.blue.withOpacity(.1) : Colors.white.withOpacity(.05),
+          color: isUser ? Colors.blue.withAlpha(26) : Colors.white.withAlpha(13),
           borderRadius: BorderRadius.circular(18).copyWith(
             bottomRight: isUser ? const Radius.circular(0) : null,
             bottomLeft: !isUser ? const Radius.circular(0) : null,
           ),
-          border: Border.all(color: isUser ? Colors.blue.withOpacity(.2) : Colors.white.withOpacity(.05)),
+          border: Border.all(color: isUser ? Colors.blue.withAlpha(51) : Colors.white.withAlpha(13)),
         ),
         child: Text(text, style: dm(sz: 14, h: 1.5, c: isUser ? Colors.white : Colors.white70)),
       ),

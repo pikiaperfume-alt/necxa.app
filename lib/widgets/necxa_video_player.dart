@@ -23,7 +23,6 @@ class NecxaVideoPlayerState extends State<NecxaVideoPlayer> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _initialized = false;
   bool _error = false;
-  bool _audioReady = false;
 
   @override
   void initState() {
@@ -60,7 +59,6 @@ class NecxaVideoPlayerState extends State<NecxaVideoPlayer> {
     try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setSourceUrl(widget.audioUrl!);
-      if (mounted) setState(() => _audioReady = true);
       // Volume control (if video has sound, we duck one or let both play)
       await _audioPlayer.setVolume(1.0);
     } catch (e) {
@@ -160,7 +158,7 @@ class NecxaVideoPlayerState extends State<NecxaVideoPlayer> {
                 child: Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
+                    color: Colors.black.withAlpha(102),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -184,4 +182,3 @@ class NecxaVideoPlayerState extends State<NecxaVideoPlayer> {
     );
   }
 }
-

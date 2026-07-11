@@ -13,9 +13,9 @@ class PrivacySecurityScreen extends StatefulWidget {
 }
 
 class _PrivacySecurityScreenState extends State<PrivacySecurityScreen> {
-  bool _biometricsEnabled = true;
+  final bool _biometricsEnabled = true;
   bool _escrowLock = true;
-  bool _twoFactorAuth = false;
+  final bool _twoFactorAuth = false;
 
   @override
   Widget build(BuildContext context) {

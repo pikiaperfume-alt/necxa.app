@@ -64,8 +64,11 @@ class _MusicManagementAdminState extends State<MusicManagementAdmin> {
     if (result != null && result.files.single.path != null) {
       final file = File(result.files.single.path!);
       setState(() {
-        if (type == 'audio') _audioFile = file;
-        else _artFile = file;
+        if (type == 'audio') {
+          _audioFile = file;
+        } else {
+          _artFile = file;
+        }
         _isUploading = true;
       });
 
@@ -77,8 +80,11 @@ class _MusicManagementAdminState extends State<MusicManagementAdmin> {
         final url = _supabase.storage.from('music').getPublicUrl(path);
 
         setState(() {
-          if (type == 'audio') _audioUrl = url;
-          else _artUrl = url;
+          if (type == 'audio') {
+            _audioUrl = url;
+          } else {
+            _artUrl = url;
+          }
         });
       } catch (e) {
         _msg('Upload failed. ${getUserFriendlyError(e)}');
@@ -182,7 +188,7 @@ class _MusicManagementAdminState extends State<MusicManagementAdmin> {
             
             const SizedBox(height: 24),
             DropdownButtonFormField<String>(
-              value: _licenseType,
+              initialValue: _licenseType,
               dropdownColor: Colors.grey[900],
               style: dm(c: Colors.white),
               decoration: _inputDeco('License Type', Icons.gavel),
@@ -294,7 +300,7 @@ class _MusicManagementAdminState extends State<MusicManagementAdmin> {
               ),
               Switch(
                 value: t['is_active'] ?? true, 
-                activeColor: C.brand,
+                activeThumbColor: C.brand,
                 onChanged: (v) async {
                   await _supabase.rpc('admin_update_music', params: {'p_track_id': t['id'], 'p_is_active': v});
                   _loadTracks();

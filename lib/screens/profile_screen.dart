@@ -245,9 +245,14 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            const _MetricItem(label: 'Earnings', value: '125 NCX', color: C.brand),
+            ListenableBuilder(
+              listenable: widget.state,
+              builder: (context, _) {
+                return _MetricItem(label: 'Earnings', value: '${widget.state.ncxBalance.toStringAsFixed(0)} NCX', color: C.brand);
+              }
+            ),
             _MetricSeparator(),
-            const _MetricItem(label: 'Reputation', value: '98%', color: C.brand, trend: true),
+            const _MetricItem(label: 'Reputation', value: '98%', color: C.purple, trend: true),
             _MetricSeparator(),
             const _MetricItem(label: 'Posts', value: '01', color: Colors.white),
           ],
@@ -503,8 +508,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   onTap: () {
                     if (_isManageMode) {
                       setState(() {
-                         if (isSelected) _selectedPostIds.remove(id);
-                         else _selectedPostIds.add(id);
+                         if (isSelected) {
+                           _selectedPostIds.remove(id);
+                         } else {
+                           _selectedPostIds.add(id);
+                         }
                       });
                     } else {
                       widget.state.go('community', extra: id);
@@ -1107,4 +1115,3 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   @override Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => SizedBox.expand(child: child);
   @override bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
 }
-

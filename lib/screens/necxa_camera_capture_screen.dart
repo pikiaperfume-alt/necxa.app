@@ -223,7 +223,8 @@ class _NecxaCameraCaptureScreenState extends State<NecxaCameraCaptureScreen> {
     
     if (_activeFilter == 'Cinema') filterColor = Colors.orange.withOpacity(0.1);
     if (_activeFilter == 'Neon') filterColor = Colors.purple.withOpacity(0.2);
-    if (_activeFilter == 'Noir') return ColorFiltered(
+    if (_activeFilter == 'Noir') {
+      return ColorFiltered(
       colorFilter: const ColorFilter.matrix([
         0.2126, 0.7152, 0.0722, 0, 0,
         0.2126, 0.7152, 0.0722, 0, 0,
@@ -232,6 +233,7 @@ class _NecxaCameraCaptureScreenState extends State<NecxaCameraCaptureScreen> {
       ]),
       child: CameraPreview(_controller!),
     );
+    }
     
     return Container(color: filterColor);
   }
@@ -374,7 +376,7 @@ class _NecxaCameraCaptureScreenState extends State<NecxaCameraCaptureScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black87,
-      builder: (context) => Container(
+      builder: (context) => SizedBox(
         height: 120,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -399,7 +401,7 @@ class _NecxaCameraCaptureScreenState extends State<NecxaCameraCaptureScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black87,
-      builder: (context) => Container(
+      builder: (context) => SizedBox(
         height: 150,
         child: ListView(
           scrollDirection: Axis.horizontal,

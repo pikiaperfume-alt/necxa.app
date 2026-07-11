@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import '../theme.dart';
-import '../data.dart';
 
 /// 🌹 Live Gifting Overlay
 /// Handles real-time particle animations for gifts sent during the stream.

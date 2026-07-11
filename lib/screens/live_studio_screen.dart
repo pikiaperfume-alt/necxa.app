@@ -764,10 +764,10 @@ class _LiveStudioScreenState extends State<LiveStudioScreen> with WidgetsBinding
                       const SizedBox(height: 4),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
+                        child: const LinearProgressIndicator(
                           value: 3.2 / 5,
                           backgroundColor: Colors.white10,
-                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.pink),
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.pink),
                           minHeight: 6,
                         ),
                       ),

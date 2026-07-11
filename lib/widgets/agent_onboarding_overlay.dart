@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../app_state.dart';
-import 'shield_capture_overlay.dart';
 
 class AgentOnboardingOverlay extends StatefulWidget {
   final AppState state;

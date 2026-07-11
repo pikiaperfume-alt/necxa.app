@@ -166,7 +166,7 @@ class ListScreen extends StatelessWidget {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _SpinningEmoji('🤖', size: 40),
+          const _SpinningEmoji('🤖', size: 40),
           const SizedBox(height: 8),
           Text('AI verifying identity...', style: dm(sz: 13, c: C.gold)),
         ],
@@ -184,7 +184,7 @@ class ListScreen extends StatelessWidget {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _PulsingText('📷', size: 40),
+          const _PulsingText('📷', size: 40),
           const SizedBox(height: 8),
           Text('Scanning ID document...', style: dm(sz: 13, c: C.gold)),
         ],
@@ -231,7 +231,7 @@ class ListScreen extends StatelessWidget {
             child: Stack(
               children: [
                 if (state.faceScanning)
-                  ClipOval(
+                  const ClipOval(
                     child: _ScanLine(
                         color: C.gold, width: double.infinity),
                   ),
@@ -251,7 +251,7 @@ class ListScreen extends StatelessWidget {
                           ? Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                _PulsingText('📷', size: 64),
+                                const _PulsingText('📷', size: 64),
                                 Text('Scanning face...',
                                     style: dm(sz: 10, c: C.gold)),
                               ],
@@ -464,7 +464,7 @@ class ListScreen extends StatelessWidget {
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _PulsingText('🌐', size: 50),
+                      const _PulsingText('🌐', size: 50),
                       const SizedBox(height: 8),
                       Text(
                           'Stand at the property, then tap capture',

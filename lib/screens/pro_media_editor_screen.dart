@@ -124,7 +124,7 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   double _bgmVolume = 0.5;
   double _voiceVolume = 0.8;
   double _originalVolume = 1.0;
-  bool _isMuted = false;
+  final bool _isMuted = false;
   bool _isPlaying = false;
   String _selectedAspectRatio = '9:16';
   
@@ -146,8 +146,8 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   // Professional Metadata
   final Map<int, String> _transitions = {};
   // Estimated renderer metadata
-  double _frameRate = 30.0;
-  int _bitrateKbps = 8000; // assumed default bitrate for size estimate
+  final double _frameRate = 30.0;
+  final int _bitrateKbps = 8000; // assumed default bitrate for size estimate
   
   // Overlay & Metadata State
   final List<Map<String, dynamic>> _overlays = []; 
@@ -171,7 +171,7 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   // Audio Timeline State
   double _audioStart = 0;
   double _audioEnd = 30; // 30s default
-  double _audioOffset = 0; // Where it starts in the global timeline
+  final double _audioOffset = 0; // Where it starts in the global timeline
 
   @override
   void initState() {
@@ -2487,8 +2487,9 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   // ── CORE UI UTILITIES ───────────────────────────────────────
   Widget _buildPreviewLayer() {
     double ratio = 9 / 16;
-    if (_selectedAspectRatio == '1:1') ratio = 1.0;
-    else if (_selectedAspectRatio == '4:5') ratio = 4 / 5;
+    if (_selectedAspectRatio == '1:1') {
+      ratio = 1.0;
+    } else if (_selectedAspectRatio == '4:5') ratio = 4 / 5;
 
     if (_videoController != null && _videoController!.value.isInitialized) {
       final clip = _sequence.isNotEmpty ? _sequence[_activeClipIndex] : null;

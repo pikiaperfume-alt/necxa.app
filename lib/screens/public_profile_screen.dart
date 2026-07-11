@@ -85,7 +85,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> with SingleTi
                           unselectedLabelStyle: syne(sz: 12, w: FontWeight.w700, ls: 2),
                           tabs: [
                             Tab(text: _hasListings ? 'SHOWCASE' : 'CONTENT'),
-                            Tab(text: 'FEED'),
+                            const Tab(text: 'FEED'),
                           ],
                         ),
                       ),
@@ -162,14 +162,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> with SingleTi
                 const Spacer(),
                 GestureDetector(
                   onTap: () {
-                    if (profile != null) {
-                      widget.state.openCreatorChat(
-                        profile.id,
-                        profile.fullName ?? 'Creator',
-                        profile.avatarUrl
-                      );
-                    }
-                  },
+                    widget.state.openCreatorChat(
+                      profile.id,
+                      profile.fullName ?? 'Creator',
+                      profile.avatarUrl
+                    );
+                                    },
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(

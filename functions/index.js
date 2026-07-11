@@ -2,7 +2,7 @@ const functions = require("firebase-functions");
 const admin     = require("firebase-admin");
 const speakeasy = require("speakeasy");
 const qrcode    = require("qrcode");
-const nodemailer = require("nodemailer");
+const nodemailer = require("nodemailer"); // Ensure nodemailer is in your package.json
 const axios      = require("axios");
 
 admin.initializeApp();
@@ -26,6 +26,64 @@ async function getCachedRates() {
     console.error("Forex Cache Error:", e);
   }
   return FOREX_RATES;
+}
+
+// Helper for sending emails
+async function getMailTransporter() {
+  // In production, use environment variables for a real SMTP service like SendGrid, Mailgun, or Resend.
+  // These secrets should be stored in Firebase Secret Manager.
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    console.warn("SMTP credentials not configured. Email will not be sent.");
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host: smtpHost,
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+}
+
+/**
+ * Helper for sending a transaction receipt email.
+ */
+async function sendPurchaseReceiptEmail(email, { tx_id, date, description, amount_ncx, amount_fiat, currency, method, new_balance_ncx }) {
+  const transporter = await getMailTransporter();
+  if (!transporter) return;
+
+  const html = `
+    <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd;">
+      <h2 style="color: #0052FF;">Transaction Receipt</h2>
+      <p>Hello,</p>
+      <p>Your recent purchase of Necxa Coins was successful. Here are the details:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px;">Transaction ID:</td><td style="padding: 8px; text-align: right;">${tx_id}</td></tr>
+        <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px;">Date:</td><td style="padding: 8px; text-align: right;">${date}</td></tr>
+        <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px;">Description:</td><td style="padding: 8px; text-align: right;">${description}</td></tr>
+        <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px;">Coins Purchased:</td><td style="padding: 8px; text-align: right; font-weight: bold;">${amount_ncx} NCX</td></tr>
+        <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px;">Amount Paid:</td><td style="padding: 8px; text-align: right;">${amount_fiat.toLocaleString()} ${currency}</td></tr>
+        <tr style="border-bottom: 1px solid #eee;"><td style="padding: 8px;">Payment Method:</td><td style="padding: 8px; text-align: right;">${method}</td></tr>
+      </table>
+      <p style="font-size: 18px;">Your new coin balance is: <strong style="color: #0052FF;">${new_balance_ncx.toLocaleString()} NCX</strong></p>
+      <p>Thank you for being a part of the Necxa network.</p>
+      <p><em>The Necxa Team</em></p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: '"Necxa Finance" <no-reply@necxa.uk>',
+    to: email,
+    subject: "Your Necxa Coin Purchase Receipt",
+    html: html,
+  });
 }
 
 // ── Economics ──
@@ -93,6 +151,7 @@ async function recordLedgerEntry(userId, { type, amount, currency, direction, me
 // dual-write mapper
   const typeMap = {
     "buy_coins": "COIN_PURCHASE",
+    "wallet_topup": "WALLET_DEPOSIT",
     "listing_unlock": "LISTING_UNLOCK",
     "feature_unlock": "FEATURE_UNLOCK",
     "feature_unlock_fee": "PLATFORM_FEE",
@@ -100,9 +159,10 @@ async function recordLedgerEntry(userId, { type, amount, currency, direction, me
     "gift_received": "GIFT_RECEIVED",
     "gift_fee": "PLATFORM_FEE",
     "withdraw_fiat": "WITHDRAWAL",
-    "liquidation_in": "WITHDRAWAL",
-    "liquidation_out": "WITHDRAWAL",
-    "shop_purchase": "SHOP_PURCHASE",
+    "shop_commission": "PLATFORM_FEE",
+    "liquidation_out": "COIN_SALE", // More specific than WITHDRAWAL
+    "liquidation_in": "FIAT_CREDIT_FROM_SALE", // More specific
+    "shop_purchase": "SHOP_PURCHASE", // Corrected: was missing
     "delivery_fee": "DELIVERY_FEE",
     "escrow_deposit": "ESCROW_DEPOSIT",
     "escrow_release": "ESCROW_RELEASE",
@@ -193,6 +253,78 @@ exports.initPaymentSystem = functions.https.onCall(async (data, context) => {
   return { success: true, message: "Payment system initialized with default methods." };
 });
 
+// NEW: Transport Index configuration (example structure in Firestore)
+/*
+  Firestore document at `system_config/transport_index`:
+  {
+    "base_rate_per_km_ugx": 1500,
+    "fuel_surcharge_pct": 0.05, // 5%
+    "weight_tiers": [
+      { "max_kg": 1, "multiplier": 1.0 },
+      { "max_kg": 5, "multiplier": 1.2 },
+      { "max_kg": 20, "multiplier": 1.8 },
+      { "max_kg": 80, "multiplier": 3.0 }
+    ],
+    "speed_multipliers": {
+      "express": 1.8,
+      "standard": 1.0,
+      "batch": 0.7
+    }
+  }
+*/
+
+/**
+ * NEW: Calculates delivery distance between two geo-points (Haversine formula).
+ * @param {object} origin - { lat, lon }
+ * @param {object} destination - { lat, lon }
+ * @returns {number} Distance in kilometers.
+ */
+function getDistanceInKm(origin, destination) {
+  const R = 6371; // Radius of the Earth in km
+  const dLat = (destination.lat - origin.lat) * Math.PI / 180;
+  const dLon = (destination.lon - origin.lon) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(origin.lat * Math.PI / 180) * Math.cos(destination.lat * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+
+/**
+ * NEW: Calculates the delivery fee based on distance, weight, and speed.
+ * @param {number} distanceKm - The delivery distance in kilometers.
+ * @param {number} weightKg - The weight of the package in kilograms.
+ * @param {string} speed - The delivery speed ('express', 'standard', 'batch').
+ * @returns {Promise<number>} The calculated delivery fee in UGX.
+ */
+async function calculateDeliveryFee(distanceKm, weightKg, speed) {
+  const configDoc = await db.collection("system_config").doc("transport_index").get();
+  if (!configDoc.exists) {
+    console.error("Transport Index configuration is missing!");
+    return 5000; // Fallback fee
+  }
+  const config = configDoc.data();
+
+  // 1. Get base rate for distance
+  let fee = distanceKm * config.base_rate_per_km_ugx;
+
+  // 2. Apply weight multiplier
+  const weightTier = config.weight_tiers.find(tier => weightKg <= tier.max_kg) || config.weight_tiers[config.weight_tiers.length - 1];
+  fee *= weightTier.multiplier;
+
+  // 3. Apply speed multiplier
+  const speedMultiplier = config.speed_multipliers[speed] || 1.0;
+  fee *= speedMultiplier;
+
+  // 4. Add fuel surcharge
+  fee *= (1 + config.fuel_surcharge_pct);
+
+  // Return a rounded, sensible integer value (e.g., to the nearest 100 UGX)
+  return Math.ceil(fee / 100) * 100;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SHOP E-COMMERCE & LOGISTICS PAYMENT (INTERNAL WALLET)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,101 +332,122 @@ exports.initPaymentSystem = functions.https.onCall(async (data, context) => {
 exports.processShopPurchase = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
   const userId = context.auth.uid;
-  const { orderId, listingId, vendorId, sku, itemsTotalUgx, deliveryFeeUgx, quantity } = data;
+  // CORRECTED: Signature now matches the frontend and includes all required data.
+  const { orderId, listingId, vendorId, sku, quantity, deliverySpeed, customerLocation, customerNumber } = data;
 
-  if (!orderId || !listingId || !vendorId || itemsTotalUgx == null || deliveryFeeUgx == null) {
-    throw new functions.https.HttpsError("invalid-argument", "Missing required shop parameters.");
+  // VALIDATION: Check for new required fields
+  if (!orderId || !listingId || !vendorId || !deliverySpeed || !customerLocation?.lat || !customerNumber) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing required shop, customer, and delivery parameters.");
   }
 
-  const rates = await getCachedRates();
-  const ugxPerNcx = NCX_PRICE_USD * rates.USD_TO_UGX; // ~100 UGX
-  const ncxItemsCost = Math.ceil(itemsTotalUgx / ugxPerNcx);
-  const ncxDeliveryCost = Math.ceil(deliveryFeeUgx / ugxPerNcx);
-  const totalNcxCost = ncxItemsCost + ncxDeliveryCost;
+  try {
+    // --- SERVER-SIDE CALCULATION (as you designed) ---
+    const listingDoc = await db.collection("listings").doc(listingId).get();
+    if (!listingDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Product listing not found.");
+    }
+    const listingData = listingDoc.data();
+    const productWeightKg = (listingData.weight_kg || 1) * (quantity || 1);
+    const vendorLocation = listingData.location;
 
-  return await db.runTransaction(async (tx) => {
-    const walletRef = db.collection("wallets").doc(userId);
-    const walletDoc = await tx.get(walletRef);
-
-    if (!walletDoc.exists) throw new functions.https.HttpsError("not-found", "Wallet not found.");
-    const currentBalance = walletDoc.data().coin_balance || 0;
-
-    if (currentBalance < totalNcxCost) {
-      throw new functions.https.HttpsError("resource-exhausted", "Insufficient NCX balance for shop purchase.");
+    if (!vendorLocation?.lat) {
+      throw new functions.https.HttpsError("failed-precondition", "Vendor location is not set for this product.");
     }
 
-    // Deduct total balance
-    tx.update(walletRef, {
-      coin_balance: admin.firestore.FieldValue.increment(-totalNcxCost)
-    });
-
-    const vendorPlatformFee = Math.floor(ncxItemsCost * 0.03);
-    const vendorNetEarned = ncxItemsCost - vendorPlatformFee;
-
-    // Credit Vendor for the item (minus 3% platform fee)
-    const vendorWalletRef = db.collection("wallets").doc(vendorId);
-    tx.set(vendorWalletRef, {
-      coin_balance: admin.firestore.FieldValue.increment(vendorNetEarned)
-    }, { merge: true });
-
-    // Mark Order Paid and save NCX costs for future driver payout
-    const orderRef = db.collection("orders").doc(orderId);
-    tx.update(orderRef, {
-      status: "paid",
-      payment_method: "balance",
-      items_ncx: ncxItemsCost,
-      delivery_ncx: ncxDeliveryCost,
-      paid_at: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    // 1. Ledger Entry for Shop Purchase (Goods)
-    await recordLedgerEntry(userId, {
-      type: "shop_purchase",
-      amount: ncxItemsCost,
-      currency: "NCX",
-      direction: "out",
-      reference_id: orderId,
-      metadata: { sku: sku, listing_id: listingId, quantity, ugx_value: itemsTotalUgx }
-    }, tx);
-
-    await recordLedgerEntry(vendorId, {
-      type: "shop_purchase",
-      amount: vendorNetEarned,
-      currency: "NCX",
-      direction: "in",
-      reference_id: orderId,
-      metadata: { sku: sku, listing_id: listingId, quantity, ugx_value: itemsTotalUgx, fee_deducted: vendorPlatformFee }
-    }, tx);
-
-    if (vendorPlatformFee > 0) {
-      await recordLedgerEntry("platform_revenue", {
-        type: "gift_fee", // Translates to PLATFORM_FEE
-        amount: vendorPlatformFee,
-        currency: "NCX",
-        direction: "in",
-        reference_id: orderId,
-        metadata: { source: "shop_vendor_commission", sku: sku }
-      }, tx);
+    const distanceKm = getDistanceInKm(vendorLocation, customerLocation);
+    const serverCalculatedDeliveryFeeUgx = await calculateDeliveryFee(distanceKm, productWeightKg, deliverySpeed);
+    
+    const itemsTotalUgx = (listingData.price_ugx || 0) * (quantity || 1);
+    if (itemsTotalUgx <= 0) {
+      throw new functions.https.HttpsError("failed-precondition", "Invalid item price.");
     }
+    // --- END SERVER-SIDE CALCULATION ---
 
-    // 2. Ledger Entry for Delivery/Logistics Trip
-    if (ncxDeliveryCost > 0) {
+    const rates = await getCachedRates();
+    const ugxPerNcx = NCX_PRICE_USD * rates.USD_TO_UGX;
+    const ncxItemsCost = Math.ceil(itemsTotalUgx / ugxPerNcx);
+    const ncxDeliveryCost = Math.ceil(serverCalculatedDeliveryFeeUgx / ugxPerNcx);
+    const totalNcxCost = ncxItemsCost + ncxDeliveryCost;
+
+    return await db.runTransaction(async (tx) => {
+      const walletRef = db.collection("wallets").doc(userId);
+      const walletDoc = await tx.get(walletRef);
+
+      if (!walletDoc.exists) throw new functions.https.HttpsError("not-found", "Wallet not found.");
+      const currentBalance = walletDoc.data().coin_balance || 0;
+
+      if (currentBalance < totalNcxCost) {
+        throw new functions.https.HttpsError("resource-exhausted", "Insufficient NCX balance for shop purchase.");
+      }
+
+      // Deduct total balance
+      tx.update(walletRef, {
+        coin_balance: admin.firestore.FieldValue.increment(-totalNcxCost)
+      });
+
+      const vendorPlatformFee = Math.floor(ncxItemsCost * 0.03);
+      const vendorNetEarned = ncxItemsCost - vendorPlatformFee;
+
+      // Credit Vendor for the item (minus 3% platform fee)
+      const vendorWalletRef = db.collection("wallets").doc(vendorId);
+      tx.set(vendorWalletRef, {
+        coin_balance: admin.firestore.FieldValue.increment(vendorNetEarned)
+      }, { merge: true });
+
+      // Mark Order Paid and save all details
+      const orderRef = db.collection("orders").doc(orderId);
       const tripId = `TRIP-${orderId.split('-')[1] || Date.now()}`;
-      await recordLedgerEntry(userId, {
-        type: "delivery_fee",
-        amount: ncxDeliveryCost,
-        currency: "NCX",
-        direction: "out",
-        reference_id: orderId,
-        metadata: { trip_id: tripId, ugx_value: deliveryFeeUgx }
-      }, tx);
-      
-      // Update order with trip ID
-      tx.update(orderRef, { trip_id: tripId });
-    }
+      tx.update(orderRef, {
+        status: "paid",
+        payment_method: "balance",
+        items_ncx: ncxItemsCost,
+        delivery_ncx: ncxDeliveryCost,
+        trip_id: tripId,
+        delivery_details: {
+          speed: deliverySpeed,
+          distance_km: distanceKm.toFixed(2),
+          weight_kg: productWeightKg,
+          customer_location: customerLocation,
+          customer_number: customerNumber,
+          vendor_location: vendorLocation,
+          calculated_fee_ugx: serverCalculatedDeliveryFeeUgx
+        },
+        paid_at: admin.firestore.FieldValue.serverTimestamp()
+      });
 
-    return { success: true, message: "Shop purchase completed successfully." };
-  });
+      // Ledger Entry for Shop Purchase (Goods)
+      await recordLedgerEntry(userId, {
+        type: "shop_purchase", amount: ncxItemsCost, currency: "NCX", direction: "out", reference_id: orderId,
+        metadata: { sku, listing_id: listingId, quantity, ugx_value: itemsTotalUgx }
+      }, tx);
+
+      await recordLedgerEntry(vendorId, {
+        type: "shop_purchase", amount: vendorNetEarned, currency: "NCX", direction: "in", reference_id: orderId,
+        metadata: { sku, listing_id: listingId, quantity, ugx_value: itemsTotalUgx, fee_deducted: vendorPlatformFee }
+      }, tx);
+
+      if (vendorPlatformFee > 0) {
+        await recordLedgerEntry("platform_revenue", {
+          type: "shop_commission", amount: vendorPlatformFee, currency: "NCX", direction: "in", reference_id: orderId,
+          metadata: { source: "shop_vendor_commission", sku }
+        }, tx);
+      }
+
+      // Ledger Entry for Delivery/Logistics Trip
+      if (ncxDeliveryCost > 0) {
+        await recordLedgerEntry(userId, {
+          type: "delivery_fee", amount: ncxDeliveryCost, currency: "NCX", direction: "out", reference_id: orderId,
+          metadata: { trip_id: tripId, ugx_value: serverCalculatedDeliveryFeeUgx, speed: deliverySpeed, distance: distanceKm.toFixed(2) }
+        }, tx);
+      }
+
+      return { success: true, message: "Shop purchase completed successfully." };
+    });
+  } catch (error) {
+    console.error("🔥 processShopPurchase Error:", error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError("internal", error.message);
+  }
 });
 
 exports.completeDeliveryTrip = functions.https.onCall(async (data, context) => {
@@ -356,7 +509,7 @@ exports.completeDeliveryTrip = functions.https.onCall(async (data, context) => {
 
       if (platformFee > 0) {
         await recordLedgerEntry("platform_revenue", {
-          type: "gift_fee", // translates to PLATFORM_FEE
+          type: "shop_commission",
           amount: platformFee,
           currency: "NCX",
           direction: "in",
@@ -441,61 +594,85 @@ exports.unlockFeature = functions.https.onCall(async (data, context) => {
 // VAULT FUNCTIONS (existing)
 // ═══════════════════════════════════════════════════════════════════════════
 
-exports.buyCoins = functions.https.onCall(async (data, context) => {
+/**
+ * purchaseCoins
+ * The single, unified entry point for buying NCX coins.
+ * Supports internal fiat balance and external providers.
+ */
+exports.purchaseCoins = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
-  const { packId, paymentMethod, securityMetadata } = data;
+
   const userId = context.auth.uid;
+  const userEmail = context.auth.token.email;
+  const { method, packId, fiatAmount } = data;
 
-  if (!securityMetadata?.lat || !securityMetadata?.device_id)
-    throw new functions.https.HttpsError("failed-precondition", "Missing security metadata.");
+  if (!method || !packId) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing 'method' and 'packId'.");
+  }
 
-  // 1. Resolve pack and validate price
+  // 1. Fetch coin pack details from Firestore
   const packDoc = await db.collection("coin_packs").doc(packId).get();
   if (!packDoc.exists) throw new functions.https.HttpsError("not-found", "Pack not found.");
-  const { fiat_price } = packDoc.data();
+  const { ncx_amount, fiat_price, currency = "UGX", name: packName } = packDoc.data();
 
-  // 2. Validate availability
-  await ensurePaymentMethod(paymentMethod, fiat_price, "collection");
+  // --- METHOD 1: Use Fiat Balance ---
+  if (method === 'FIAT_BALANCE') {
+    return await db.runTransaction(async (tx) => {
+      const walletRef = db.collection("wallets").doc(userId);
+      const walletDoc = await tx.get(walletRef);
 
-  return await db.runTransaction(async (tx) => {
-    const walletRef = db.collection("wallets").doc(userId);
-    const packRef   = db.collection("coin_packs").doc(packId);
-    const [walletDoc, packDoc] = await Promise.all([tx.get(walletRef), tx.get(packRef)]);
-    if (!packDoc.exists) throw new functions.https.HttpsError("not-found", "Coin pack not found");
-    const { ncx_amount, fiat_price } = packDoc.data();
+      if (!walletDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "User wallet not found.");
+      }
 
-    if (walletDoc.exists) {
+      const currentFiatBalance = walletDoc.data().fiat_balance || 0;
+      if (currentFiatBalance < fiat_price) {
+        throw new functions.https.HttpsError("resource-exhausted", `Insufficient fiat balance. Have: ${currentFiatBalance}, Need: ${fiat_price}`);
+      }
+
+      // Atomically debit fiat and credit coins
       tx.update(walletRef, {
-        coin_balance: admin.firestore.FieldValue.increment(ncx_amount),
-        last_topup_at: admin.firestore.FieldValue.serverTimestamp(),
-        last_topup_amount: ncx_amount,
-        total_spent_fiat: admin.firestore.FieldValue.increment(fiat_price),
+        fiat_balance: admin.firestore.FieldValue.increment(-fiat_price),
+        coin_balance: admin.firestore.FieldValue.increment(ncx_amount)
       });
-    } else {
-      tx.set(walletRef, {
-        user_id: userId, coin_balance: ncx_amount, fiat_balance: 0.0,
-        escrow_balance: 0.0, total_spent_fiat: fiat_price,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-        last_topup_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-    const txRef = db.collection("vault_transactions").doc();
-    tx.set(txRef, { user_id: userId, type: "buy_coins", pack_id: packId,
-      ncx_added: ncx_amount, fiat_paid: fiat_price, payment_method: paymentMethod,
-      status: "completed", timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      security: securityMetadata });
 
-    // Independent Audit
-    await recordLedgerEntry(userId, {
-      type: "buy_coins",
-      amount: ncx_amount,
-      currency: "NCX",
-      direction: "in",
-      metadata: { pack_id: packId, fiat_paid: fiat_price }
-    }, tx);
+      // Record ledger entries for the internal transfer
+      await recordLedgerEntry(userId, {
+        type: "withdraw_fiat", // Represents fiat leaving the main balance
+        amount: fiat_price,
+        currency: currency,
+        direction: "out",
+        metadata: { reason: "Conversion to NCX", pack_id: packId }
+      }, tx);
+      
+      await recordLedgerEntry(userId, {
+        type: "buy_coins", // Represents coins entering the balance
+        amount: ncx_amount,
+        currency: "NCX",
+        direction: "in",
+        metadata: { source: "fiat_balance", pack_id: packId, fiat_cost: fiat_price }
+      }, tx);
 
-    return { success: true, message: `Purchased ${ncx_amount} NCX`, tx_id: txRef.id };
-  });
+      const newCoinBalance = (walletDoc.data().coin_balance || 0) + ncx_amount;
+
+      // Send email receipt (outside transaction, fire-and-forget)
+      sendPurchaseReceiptEmail(userEmail, {
+        tx_id: `FIAT-${Date.now()}`, date: new Date().toUTCString(), description: `Purchase of ${packName || 'Coin Pack'}`,
+        amount_ncx: ncx_amount, amount_fiat: fiat_price, currency: currency, method: "Fiat Balance", new_balance_ncx: newCoinBalance
+      }).catch(e => console.error("Email sending failed:", e));
+
+      return { success: true, message: `Successfully purchased ${ncx_amount} NCX.`, newCoinBalance };
+    });
+  }
+
+  // --- METHOD 2: Use Pesapal (or other external provider) ---
+  if (method === 'PESAPAL') {
+    // This simply calls the existing Pesapal initiation function.
+    // The actual coin credit happens in the webhook.
+    return await exports.initiatePesapalPayment(data, context);
+  }
+
+  throw new functions.https.HttpsError("invalid-argument", `Payment method '${method}' is not supported.`);
 });
 
 exports.liquidateCoins = functions.https.onCall(async (data, context) => {
@@ -542,6 +719,17 @@ exports.liquidateCoins = functions.https.onCall(async (data, context) => {
       direction: "in",
       metadata: { ncx_sold: ncxAmount, rate: rates.USD_TO_UGX }
     }, tx);
+
+    // Record the burned NCX as platform revenue
+    if (ncxBurned > 0) {
+      await recordLedgerEntry("platform_revenue", {
+        type: "liquidation_fee", // Maps to PLATFORM_FEE
+        amount: ncxBurned,
+        currency: "NCX",
+        direction: "in",
+        metadata: { source: "coin_liquidation_burn", user_id: userId, original_amount: ncxAmount }
+      }, tx);
+    }
 
     return { success: true, ugxReceived, ncxBurned,
       newCoinBalance: currentNcx - ncxAmount, newFiatBalance: currentFiat + ugxReceived,
@@ -634,9 +822,12 @@ exports.withdrawFiat = functions.https.onCall(async (data, context) => {
       disbursement_method: method, 
       account_number: accountNumber,
       recipient_name: recipientName,
-      status: "processing",
+      status: "pending_review",
       bank_processed: false,
-      payout_status: "pending_bank_transfer",
+      payout_status: "pending_review",
+      processed_at: null,
+      provider_reference: null,
+      error_message: null,
       timestamp: admin.firestore.FieldValue.serverTimestamp(), 
       security: securityMetadata 
     });
@@ -719,9 +910,35 @@ exports.sendWithdrawalOTP = functions.https.onCall(async (data, context) => {
     created_at: admin.firestore.FieldValue.serverTimestamp()
   });
 
-  // TODO: Integrate with real SMTP. For now, we log it and return success.
-  // In production, use nodemailer here.
-  console.log(`[AUTH] Withdrawal OTP for ${email}: ${otp}`);
+  // --- FIX: Integrate with real SMTP ---
+  const transporter = await getMailTransporter();
+  if (transporter) {
+    try {
+      await transporter.sendMail({
+        from: '"Necxa Finance" <no-reply@necxa.uk>',
+        to: email,
+        subject: "Your Necxa Withdrawal Verification Code",
+        text: `Your withdrawal verification code is: ${otp}. It is valid for 10 minutes.`,
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; color: #333;">
+            <h2>Necxa Withdrawal Verification</h2>
+            <p>Your one-time verification code is:</p>
+            <p style="font-size: 24px; font-weight: bold; letter-spacing: 2px; background: #f0f0f0; padding: 10px 20px; border-radius: 8px; display: inline-block;">${otp}</p>
+            <p>This code is valid for 10 minutes. Do not share it with anyone.</p>
+            <p>If you did not request this withdrawal, please secure your account immediately.</p>
+            <br/>
+            <p><em>The Necxa Team</em></p>
+          </div>
+        `,
+      });
+    } catch (emailError) {
+      console.error("Failed to send withdrawal OTP email:", emailError);
+      // We don't throw here, as the OTP is still saved. But we should log this failure.
+    }
+  } else {
+    // Fallback for local dev without SMTP config
+    console.log(`[AUTH] Withdrawal OTP for ${email}: ${otp}`);
+  }
   
   return { success: true, message: "Verification code sent to your email." };
 });
@@ -763,202 +980,114 @@ exports.refreshForexRates = functions.https.onCall(async (data, context) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * processGift
- * Atomic: debit sender → credit receiver (80%) → platform fee (20%)
- * → log ncx_gift → update streak → notify receiver
+ * processGift (V2 - Supabase Centric)
+ * Calls the atomic Supabase function to process a gift transaction.
+ * On success, it handles non-financial side-effects like notifications.
  */
 exports.processGift = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
 
   const {
-    receiverId, giftItemId, ncxAmount,
-    contextType, contextId, contextNote, isAnonymous,
+    receiverId, // This is the auth.uid of the receiver
+    postId,
+    giftItemId, // e.g., "rose", "diamond"
+    ncxAmount,
+    contextType, // e.g., "creator_post"
+    contextNote,
+    isAnonymous,
   } = data;
   const senderId = context.auth.uid;
 
-  // Validate context type
-  const validContexts = ["creator_post","live_stream","property_listing","broadcast_message","direct"];
-  if (!validContexts.includes(contextType))
-    throw new functions.https.HttpsError("invalid-argument", "Invalid gift context.");
-  if (!receiverId || !ncxAmount || ncxAmount < 1)
-    throw new functions.https.HttpsError("invalid-argument", "Invalid gift parameters.");
-  if (senderId === receiverId)
+  // 1. Basic Validation
+  if (!receiverId || !ncxAmount || ncxAmount < 1 || !postId) {
+    throw new functions.https.HttpsError("invalid-argument", "Invalid gift parameters (receiverId, ncxAmount, postId).");
+  }
+  if (senderId === receiverId) {
     throw new functions.https.HttpsError("invalid-argument", "Cannot gift yourself.");
-
-  await ensureGiftCatalogue();
-
-  // Resolve gift item
-  let giftName = "Custom Gift", giftEmoji = "💎";
-  if (giftItemId) {
-    const itemDoc = await db.collection("gift_items").doc(giftItemId).get();
-    if (itemDoc.exists) {
-      giftName  = itemDoc.data().name;
-      giftEmoji = itemDoc.data().emoji;
-    }
   }
 
-  // Split: 80% receiver, 20% platform
-  const platformFeeNcx = Math.floor(ncxAmount * GIFT_PLATFORM_FEE);
-  const receiverNcx    = ncxAmount - platformFeeNcx;
-  
-  const rates = await getCachedRates();
-  const currentUgxPrice = rates.USD_TO_UGX * NCX_PRICE_USD;
-  const ugxEquivalent  = ncxAmount * currentUgxPrice;
-  const isHighlighted  = ncxAmount >= 500;
+  // Initialize Supabase client
+  const { createClient } = require('@supabase/supabase-js');
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const giftRef   = db.collection("ncx_gifts").doc();
-    const senderTxRef = db.collection("vault_transactions").doc();
-    const recvTxRef   = db.collection("vault_transactions").doc();
-    const notifRef    = db.collection("notifications").doc();
-    const senderAuditRef = db.collection("audit_logs").doc(senderId).collection("live_gifts").doc(giftRef.id);
-    const receiverAuditRef = db.collection("audit_logs").doc(receiverId).collection("live_gifts").doc(giftRef.id);
-
-    await db.runTransaction(async (tx) => {
-      const senderWalletRef   = db.collection("wallets").doc(senderId);
-      const receiverWalletRef = db.collection("wallets").doc(receiverId);
-      const senderWalletDoc   = await tx.get(senderWalletRef);
-
-      if (!senderWalletDoc.exists)
-        throw new functions.https.HttpsError("not-found", "Sender wallet not found.");
-
-      const senderBalance = senderWalletDoc.data().coin_balance || 0;
-      if (senderBalance < ncxAmount)
-        throw new functions.https.HttpsError("failed-precondition",
-          `Insufficient NCX. Have: ${senderBalance}, Need: ${ncxAmount}`);
-
-      // 1. Debit sender full amount
-      tx.update(senderWalletRef, {
-        coin_balance: admin.firestore.FieldValue.increment(-ncxAmount),
-        total_gifts_sent_ncx: admin.firestore.FieldValue.increment(ncxAmount),
-        last_gift_sent_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // 2. Credit receiver 80%
-      tx.set(receiverWalletRef, {
-        coin_balance: admin.firestore.FieldValue.increment(receiverNcx),
-        total_gifts_received_ncx: admin.firestore.FieldValue.increment(receiverNcx),
-        user_id: receiverId,
-      }, { merge: true });
-
-      // 3. Sender vault transaction
-      tx.set(senderTxRef, {
-        user_id: senderId, type: "gift_sent",
-        ncx_amount: ncxAmount, ugx_equivalent: ugxEquivalent,
-        platform_fee_ncx: platformFeeNcx,
-        gift_name: giftName, gift_emoji: giftEmoji,
-        receiver_id: receiverId, context_type: contextType,
-        context_id: contextId || null, status: "completed",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // 4. Receiver vault transaction
-      tx.set(recvTxRef, {
-        user_id: receiverId, type: "gift_received",
-        ncx_amount: receiverNcx, ugx_equivalent: receiverNcx * currentUgxPrice,
-        gift_name: giftName, gift_emoji: giftEmoji,
-        sender_id: isAnonymous ? null : senderId,
-        context_type: contextType, context_id: contextId || null,
-        status: "completed", timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // 5. Immutable gift ledger record
-      tx.set(giftRef, {
-        sender_id: senderId, receiver_id: receiverId,
-        gift_item_id: giftItemId || null,
-        gift_name: giftName, gift_emoji: giftEmoji,
-        ncx_amount: ncxAmount, ugx_equivalent: ugxEquivalent,
-        platform_fee_ncx: platformFeeNcx, receiver_ncx: receiverNcx,
-        context_type: contextType, context_id: contextId || null,
+    // 2. Call the atomic Supabase RPC function
+    const { data: rpcData, error } = await supabase.rpc('process_gift_ncx', {
+      p_sender_auth_id: senderId,
+      p_receiver_auth_id: receiverId,
+      p_post_id: postId,
+      p_ncx_amount: ncxAmount,
+      p_gift_platform_fee_rate: GIFT_PLATFORM_FEE, // Using the constant from this file
+      p_gift_details: {
+        gift_item_id: giftItemId,
+        is_anonymous: isAnonymous || false,
         context_note: contextNote || null,
-        is_anonymous: isAnonymous || false, is_highlighted: isHighlighted,
-        status: "completed",
-        sender_txn_id: senderTxRef.id, receiver_txn_id: recvTxRef.id,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        context_type: contextType || 'creator_post'
+      }
+    });
 
-      tx.set(senderAuditRef, {
-        user_id: senderId,
-        counterparty_id: receiverId,
-        gift_id: giftRef.id,
-        event_type: "live_gift_sent",
-        gift_name: giftName,
-        gift_emoji: giftEmoji,
-        ncx_amount: ncxAmount,
-        receiver_ncx: receiverNcx,
-        platform_fee_ncx: platformFeeNcx,
-        context_type: contextType,
-        context_id: contextId || null,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    if (error) {
+      console.error('Supabase RPC error (process_gift_ncx):', error);
+      // This is the crucial part for the frontend
+      if (error.message.includes('Insufficient NCX balance')) {
+        throw new functions.https.HttpsError("resource-exhausted", "Insufficient NCX balance. Please top up your wallet.");
+      }
+      throw new functions.https.HttpsError("internal", "Failed to process gift transaction.");
+    }
 
-      tx.set(receiverAuditRef, {
+    // The RPC returns a single row from the table function
+    const result = rpcData[0];
+
+    if (!result || !result.success) {
+      throw new functions.https.HttpsError("internal", result?.message || "An unknown error occurred in the database function.");
+    }
+
+    // 3. Handle non-financial side-effects (fire and forget)
+    try {
+      // a. Send notification to receiver
+      const giftItem = GIFT_CATALOGUE.find(g => g.id === giftItemId) || { name: 'a Gift', emoji: '🎁' };
+      const notifRef = db.collection("notifications").doc();
+      await notifRef.set({
         user_id: receiverId,
-        counterparty_id: isAnonymous ? null : senderId,
-        gift_id: giftRef.id,
-        event_type: "live_gift_received",
-        gift_name: giftName,
-        gift_emoji: giftEmoji,
-        ncx_amount: receiverNcx,
-        gross_ncx_amount: ncxAmount,
-        platform_fee_ncx: platformFeeNcx,
-        context_type: contextType,
-        context_id: contextId || null,
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // 6. Notification for receiver
-      tx.set(notifRef, {
-        user_id: receiverId, type: "gift_received",
-        title: `${giftEmoji} You received a gift!`,
+        type: "gift_received",
+        title: `${giftItem.emoji} You received a gift!`,
         body: isAnonymous
-          ? `Someone sent you ${giftName} (${receiverNcx} NCX)`
-          : `Someone sent you ${giftEmoji} ${giftName} — ${receiverNcx} NCX`,
+          ? `Someone sent you ${giftItem.name} (${result.receiver_amount_credited} NCX)`
+          : `A user sent you ${giftItem.emoji} ${giftItem.name} — ${result.receiver_amount_credited} NCX`,
         metadata: {
-          gift_id: giftRef.id, gift_emoji: giftEmoji,
-          ncx_amount: receiverNcx,
+          gift_id: null, // The gift ID is now in Supabase, not easily available here.
+          gift_emoji: giftItem.emoji,
+          ncx_amount: result.receiver_amount_credited,
           sender_id: isAnonymous ? null : senderId,
-          context_type: contextType, context_id: contextId || null,
+          context_type: contextType,
+          context_id: postId,
         },
         is_read: false,
         created_at: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 6. Independent Audits (Inside Transaction)
-      await recordLedgerEntry(senderId, {
-        type: "gift_sent", amount: ncxAmount, currency: "NCX", direction: "out",
-        metadata: { receiver_id: receiverId, platform_fee: platformFeeNcx }
-      }, tx);
-      
-      await recordLedgerEntry(receiverId, {
-        type: "gift_received", amount: receiverNcx, currency: "NCX", direction: "in",
-        metadata: { sender_id: senderId, platform_fee: platformFeeNcx }
-      }, tx);
+      // b. Update sender's gift streak (best-effort)
+      await _updateGiftStreak(senderId, ncxAmount);
 
-      // Record Platform Revenue
-      if (platformFeeNcx > 0) {
-        await recordLedgerEntry("platform_revenue", {
-          type: "gift_fee", amount: platformFeeNcx, currency: "NCX", direction: "in",
-          metadata: { sender_id: senderId, receiver_id: receiverId, gift_id: giftRef.id }
-        }, tx);
-      }
-    });
+    } catch (sideEffectError) {
+      console.error("Error during post-gift side-effects (non-critical):", sideEffectError);
+    }
 
-    // 7. Update streak (outside transaction — best-effort)
-    await _updateGiftStreak(senderId, ncxAmount);
-
+    // 4. Return success to the client
     return {
-      success: true, giftId: giftRef.id,
-      giftEmoji, giftName, ncxAmount, receiverNcx, platformFeeNcx,
-      ugxEquivalent, isHighlighted,
-      message: `${giftEmoji} Gift sent! ${receiverNcx} NCX delivered.`,
+      success: true,
+      message: result.message,
+      receiverNcx: result.receiver_amount_credited,
+      platformFeeNcx: result.platform_fee_paid,
     };
+
   } catch (error) {
     console.error("🔥 processGift Error:", error);
     if (error instanceof functions.https.HttpsError) throw error;
     throw new functions.https.HttpsError("internal", error.message);
   }
 });
+
 
 /**
  * getContextGifts
@@ -1403,37 +1532,47 @@ exports.pesapalWebhook = require("firebase-functions/v1").runWith(pesapalConfig)
       if (orderData.type === "buy_coins" && orderData.pack_id) {
         // Find pack
         const packDoc = await db.collection("coin_packs").doc(orderData.pack_id).get();
-        if (packDoc.exists) {
-          const ncxAmount = packDoc.data().ncx_amount;
-          
+        if (!packDoc.exists) {
+          console.error(`Webhook Error: Coin pack ${orderData.pack_id} not found for order ${orderMerchantReference}.`);
+        } else {
+          const { ncx_amount, fiat_price, currency = "UGX", name: packName } = packDoc.data();
+
+          // Use a Firestore transaction to credit the coins
           await db.runTransaction(async (tx) => {
             const walletRef = db.collection("wallets").doc(userId);
-            const walletDoc = await tx.get(walletRef);
             
-            if (walletDoc.exists) {
-              tx.update(walletRef, {
-                coin_balance: admin.firestore.FieldValue.increment(ncxAmount),
-                last_topup_at: admin.firestore.FieldValue.serverTimestamp()
-              });
-            } else {
-              tx.set(walletRef, {
-                user_id: userId,
-                coin_balance: ncxAmount,
-                fiat_balance: 0,
-                created_at: admin.firestore.FieldValue.serverTimestamp()
-              });
-            }
+            // Credit coins
+            tx.set(walletRef, {
+              coin_balance: admin.firestore.FieldValue.increment(ncx_amount)
+            }, { merge: true });
 
-            // Ledger
+            // Record ledger entry
             await recordLedgerEntry(userId, {
               type: "buy_coins",
-              amount: ncxAmount,
+              amount: ncx_amount,
               currency: "NCX",
               direction: "in",
-              metadata: { method: "pesapal", tracking_id: orderTrackingId }
+              reference_id: orderMerchantReference,
+              metadata: { method: "pesapal", tracking_id: orderTrackingId, pack_id: orderData.pack_id, fiat_paid: fiat_price }
             }, tx);
           });
+
+          // Send email receipt (fire and forget)
+          const userDoc = await admin.auth().getUser(userId);
+          const walletSnap = await db.collection("wallets").doc(userId).get();
+          const newCoinBalance = walletSnap.exists ? walletSnap.data().coin_balance : ncx_amount;
+
+          sendPurchaseReceiptEmail(userDoc.email, {
+            tx_id: orderTrackingId, date: new Date().toUTCString(), description: `Purchase of ${packName || 'Coin Pack'}`,
+            amount_ncx: ncx_amount, amount_fiat: fiat_price, currency: currency, method: "Pesapal", new_balance_ncx: newCoinBalance
+          }).catch(e => console.error("Email sending failed in webhook:", e));
         }
+      } else if (orderData.type === "wallet_topup") {
+        const ugxAmount = orderData.amount;
+        // This part needs a new Supabase function: `credit_fiat`
+        // For now, we will log an error as it's not implemented yet.
+        console.error(`Webhook Error: 'wallet_topup' fulfillment not yet implemented in Supabase for order ${orderMerchantReference}.`);
+
       } else if (orderData.type === "unlock_listing" && orderData.listing_id) {
         // Unlock listing logic (similar to necxaPaymentGateway)
         await db.runTransaction(async (tx) => {
@@ -1538,5 +1677,102 @@ exports.pesapalWebhook = require("firebase-functions/v1").runWith(pesapalConfig)
   } catch (error) {
     console.error("Pesapal Webhook Error:", error.message);
     res.status(500).send("Webhook processing failed.");
+  }
+});
+
+/**
+ * Helper to disburse funds via Pesapal.
+ * NOTE: This is a hypothetical structure. The actual endpoint and payload may differ.
+ */
+async function disburseViaPesapal(token, { amount, accountNumber, recipientName, method }) {
+  const DISBURSEMENT_URL = "https://pay.pesapal.com/v3/api/Transactions/SendMoney"; // Hypothetical endpoint
+
+  const payload = {
+    amount: parseFloat(amount).toFixed(2),
+    currency: "UGX",
+    destination: {
+      type: "MOBILE_MONEY", // Or "BANK_ACCOUNT"
+      recipient: {
+        msisdn: accountNumber,
+        name: recipientName,
+      },
+      wallet: method.toUpperCase(), // e.g., "MTN", "AIRTEL"
+    },
+    description: `Necxa Payout to ${recipientName}`,
+    reference: `WD-${Date.now()}`, // Unique reference for this disbursement
+  };
+
+  const response = await axios.post(DISBURSEMENT_URL, payload, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    }
+  });
+
+  if (response.data && response.data.status === "SUCCESS") {
+    return { success: true, provider_reference: response.data.transaction_reference };
+  } else {
+    throw new Error(response.data.message || "Pesapal disbursement failed.");
+  }
+}
+
+/**
+ * processDisbursement (Callable by Finance Team)
+ * Executes the actual payout for a reviewed withdrawal transaction.
+ */
+exports.processDisbursement = require("firebase-functions/v1").runWith(pesapalConfig).https.onCall(async (data, context) => {
+  // --- SECURITY: Add role-based access control ---
+  // In a real app, you would check for a custom claim e.g., if (context.auth.token.role !== 'finance')
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Finance team authentication required.");
+  }
+
+  const { transactionId } = data;
+  if (!transactionId) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing transactionId.");
+  }
+
+  const txRef = db.collection("vault_transactions").doc(transactionId);
+  const txDoc = await txRef.get();
+
+  if (!txDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Withdrawal transaction not found.");
+  }
+
+  const txData = txDoc.data();
+
+  if (txData.status !== "pending_review") {
+    throw new functions.https.HttpsError("failed-precondition", `Transaction is not pending review. Current status: ${txData.status}`);
+  }
+
+  await txRef.update({ status: "processing", payout_status: "processing" });
+
+  try {
+    const pesapalToken = await getPesapalToken();
+    const disbursementResult = await disburseViaPesapal(pesapalToken, {
+      amount: txData.amount_withdrawn,
+      accountNumber: txData.account_number,
+      recipientName: txData.recipient_name,
+      method: txData.disbursement_method,
+    });
+
+    await txRef.update({
+      status: "completed",
+      payout_status: "paid",
+      bank_processed: true,
+      processed_at: admin.firestore.FieldValue.serverTimestamp(),
+      provider_reference: disbursementResult.provider_reference,
+    });
+
+    return { success: true, message: `Disbursement of UGX ${txData.amount_withdrawn} to ${txData.account_number} completed successfully.` };
+  } catch (error) {
+    console.error("Pesapal Disbursement Error:", error.response?.data || error.message);
+    await txRef.update({
+      status: "review_failed",
+      payout_status: "failed",
+      error_message: error.message || "An unknown error occurred during disbursement.",
+    });
+    throw new functions.https.HttpsError("internal", `Failed to disburse funds via Pesapal: ${error.message}`);
   }
 });

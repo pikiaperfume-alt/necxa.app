@@ -35,7 +35,7 @@ class ContentSanitizer {
     List<String> explicitTags = sanitizeTags(manualTags);
     List<String> inlineTags = extractHashtagsFromText(description);
     
-    return [...explicitTags, ...inlineTags].toSet().toList();
+    return <dynamic>{...explicitTags, ...inlineTags}.toList();
   }
 
   /// Cleans the descriptions to prevent text injections, excessive whitespace, 
@@ -44,10 +44,10 @@ class ContentSanitizer {
     if (raw.trim().isEmpty) return '';
     
     // Remove excessive consecutive newlines (more than 2)
-    String cleaned = raw.replaceAll(RegExp(r'\\n{3,}'), '\\n\\n');
+    String cleaned = raw.replaceAll(RegExp(r'\n{3,}'), '\n\n');
     
     // Trim leading whitespace on each line
-    cleaned = cleaned.split('\\n').map((line) => line.trimRight()).join('\\n');
+    cleaned = cleaned.split('\n').map((line) => line.trimRight()).join('\n');
     
     return cleaned.trim();
   }

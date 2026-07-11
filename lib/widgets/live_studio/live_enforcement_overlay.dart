@@ -7,10 +7,10 @@ class LiveEnforcementOverlay extends StatelessWidget {
   final VoidCallback onClose;
 
   const LiveEnforcementOverlay({
-    Key? key,
+    super.key,
     required this.enforcementReason,
     required this.onClose,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

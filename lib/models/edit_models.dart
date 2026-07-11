@@ -61,3 +61,42 @@ class FilterOperation extends EditOperation {
   @override
   Map<String, dynamic> toJson() => {'type': type, 'name': filterName};
 }
+
+/// Represents the type of a timeline track.
+enum TrackType { video, audio, text, effect }
+
+/// Represents a single clip on a timeline track.
+class TimelineClip {
+  final String id;
+  Duration start;
+  Duration duration;
+  final EditOperation operation;
+
+  TimelineClip({
+    required this.id,
+    required this.start,
+    required this.duration,
+    required this.operation,
+  });
+}
+
+/// Represents a full track in the timeline, containing multiple clips.
+class TimelineTrack {
+  final String id;
+  final TrackType type;
+  final List<TimelineClip> clips;
+  final String label;
+  final IconData icon;
+  bool isLocked;
+  bool isVisible;
+
+  TimelineTrack({
+    required this.id,
+    required this.type,
+    required this.clips,
+    required this.label,
+    required this.icon,
+    this.isLocked = false,
+    this.isVisible = true,
+  });
+}
