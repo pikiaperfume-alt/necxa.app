@@ -1297,7 +1297,7 @@ class AppState extends ChangeNotifier {
     if (user != null) {
       try {
         final result = await fbGifting.sendGift(
-          senderId: user.id,
+          senderId: user!.id,
           receiverId: receiverId ?? 'platform_recipient', // default if missing from UI
           giftItemId: name.toLowerCase(),
           ncxAmount: price,

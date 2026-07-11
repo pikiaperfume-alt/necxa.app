@@ -911,7 +911,7 @@ class _UploadScreenState extends State<UploadScreen>
                   ),
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
-                    BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))
+                    BoxShadow(color: Colors.red.withAlpha(77), blurRadius: 15, offset: const Offset(0, 8))
                   ],
                 ),
                 child: Row(
@@ -1132,7 +1132,7 @@ class _UploadScreenState extends State<UploadScreen>
           color: accent,
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
-            BoxShadow(color: accent.withOpacity(0.3), blurRadius: 20, spreadRadius: 0)
+            BoxShadow(color: accent.withAlpha(77), blurRadius: 20, spreadRadius: 0)
           ],
         ),
         child: Center(

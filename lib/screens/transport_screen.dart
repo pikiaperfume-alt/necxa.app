@@ -64,9 +64,9 @@ class _TransportScreenState extends State<TransportScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.8),
+                            color: Colors.black.withAlpha(204),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: C.brand.withOpacity(0.3)),
+                            border: Border.all(color: C.brand.withAlpha(77)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -111,9 +111,9 @@ class _TransportScreenState extends State<TransportScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: C.green.withOpacity(.1),
+          color: C.green.withAlpha(26),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: C.green.withOpacity(.3)),
+          border: Border.all(color: C.green.withAlpha(77)),
         ),
         child: Row(
           children: [
@@ -132,9 +132,9 @@ class _TransportScreenState extends State<TransportScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: C.brand.withOpacity(.1),
+            color: C.brand.withAlpha(26),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: C.brand.withOpacity(.3)),
+            border: Border.all(color: C.brand.withAlpha(77)),
           ),
           child: Row(
             children: [
@@ -243,8 +243,9 @@ class _TransportScreenState extends State<TransportScreen> {
     return Positioned(
       top: 40, right: -40,
       child: Container(
-        width: 250, height: 250,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: C.brand.withOpacity(.05)),
+        width: 250,
+        height: 250,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: C.brand.withAlpha(13)),
         child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60), child: const SizedBox()),
       ),
     );
@@ -297,7 +298,7 @@ class _TransportScreenState extends State<TransportScreen> {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 14),
-              decoration: BoxDecoration(color: C.brand, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: C.brand.withOpacity(.3), blurRadius: 10)]),
+              decoration: BoxDecoration(color: C.brand, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: C.brand.withAlpha(77), blurRadius: 10)]),
               child: Center(child: Text('EXPLORE ROUTES', style: syne(sz: 12, w: FontWeight.w800, c: Colors.white))),
             ),
           ),
@@ -337,7 +338,7 @@ class _TransportScreenState extends State<TransportScreen> {
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: Colors.redAccent.withOpacity(.2), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: Colors.redAccent.withAlpha(51), borderRadius: BorderRadius.circular(10)),
                 child: Text('${widget.state.pendingVendorOrders} PENDING', style: dm(sz: 9, w: FontWeight.bold, c: Colors.redAccent)),
               ),
             ]
@@ -367,7 +368,7 @@ class _TransportScreenState extends State<TransportScreen> {
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: C.brand.withOpacity(.2), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: C.brand.withAlpha(51), borderRadius: BorderRadius.circular(10)),
                 child: Text('${widget.state.activeBuyerTransportCount} ACTIVE', style: dm(sz: 9, w: FontWeight.bold, c: C.brand)),
               ),
             ]
@@ -405,7 +406,7 @@ class _TransportScreenState extends State<TransportScreen> {
   Widget _buildHubStatus(TransportDriver d) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(20), border: Border.all(color: C.brand.withOpacity(.3))),
+      decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(20), border: Border.all(color: C.brand.withAlpha(77))),
       child: Column(
         children: [
           Row(
@@ -449,7 +450,7 @@ class _TransportScreenState extends State<TransportScreen> {
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(color: C.card.withOpacity(.85), border: Border.all(color: Colors.white.withOpacity(.1)), borderRadius: BorderRadius.circular(20)),
+            decoration: BoxDecoration(color: C.card.withAlpha(217), border: Border.all(color: Colors.white.withAlpha(26)), borderRadius: BorderRadius.circular(20)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -555,7 +556,7 @@ class _OrderCard extends StatelessWidget {
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('ID: ${order.id.substring(0, 6).toUpperCase()}', style: dm(sz: 10, c: C.dim)),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: col.withOpacity(.1), borderRadius: BorderRadius.circular(10)), child: Text(order.status.name.toUpperCase(), style: dm(sz: 9, c: col, w: FontWeight.w700))),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: col.withAlpha(26), borderRadius: BorderRadius.circular(10)), child: Text(order.status.name.toUpperCase(), style: dm(sz: 9, c: col, w: FontWeight.w700))),
             ],
           ),
           const SizedBox(height: 12),
@@ -624,7 +625,7 @@ class _EcomOrderCardState extends State<_EcomOrderCard> {
               Text('ORD: ${data['order_id'].toString().substring(0, 8)}', style: dm(sz: 10, c: C.dim)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: col.withOpacity(.1), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: col.withAlpha(26), borderRadius: BorderRadius.circular(10)),
                 child: Text(status.toUpperCase().replaceAll('_', ' '), style: dm(sz: 9, c: col, w: FontWeight.w700)),
               ),
             ],
@@ -678,9 +679,9 @@ class _EcomOrderCardState extends State<_EcomOrderCard> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF00E5FF).withOpacity(0.1),
+                      color: const Color(0xFF00E5FF).withAlpha(26),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.2)),
+                      border: Border.all(color: const Color(0xFF00E5FF).withAlpha(51)),
                     ),
                     child: Text('CHAT', style: syne(sz: 9, w: FontWeight.bold, c: const Color(0xFF00E5FF))),
                   ),
