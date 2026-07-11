@@ -105,7 +105,7 @@ class FirebaseVaultService {
     required double amount,
     required String currency,
     required String description,
-    required String type, // 'buy_coins' or 'unlock_listing'
+    required String type, // e.g. 'wallet_topup', 'buy_coins', 'unlock_listing'
     String? packId,
     String? listingId,
     String? email,

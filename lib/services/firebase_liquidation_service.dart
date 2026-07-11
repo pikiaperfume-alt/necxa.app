@@ -1,20 +1,18 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'coin_liquidation_service.dart';
 
 class FirebaseLiquidationService {
-  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   FirebaseFunctions get _functions => FirebaseFunctions.instance;
   
   // 💹 NCX Economics Node: 1 NCX = 100 UGX (Base Rate)
-  static const double NCX_PRICE = 100.0;
-  static const double BURN_RATE = 0.11; // 11% Burn Tax
+  static const double ncxPrice = 100.0;
+  static const double burnRate = 0.11; // 11% Burn Tax
 
   Future<LiquidationQuote> getQuote(double ncxAmount) async {
-    final double rawUgx = ncxAmount * NCX_PRICE;
-    final double ncxBurned = ncxAmount * BURN_RATE;
-    final double ugxReceived = rawUgx * (1 - BURN_RATE);
+    final double rawUgx = ncxAmount * ncxPrice;
+    final double ncxBurned = ncxAmount * burnRate;
+    final double ugxReceived = rawUgx * (1 - burnRate);
 
     return LiquidationQuote(
       ncxAmount: ncxAmount,

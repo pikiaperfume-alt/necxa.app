@@ -702,7 +702,7 @@ class AppState extends ChangeNotifier {
       amount: amt,
       currency: 'UGX',
       description: 'Wallet Deposit',
-      type: 'fiat_deposit',
+      type: 'wallet_topup',
       email: myProfile?['email'] ?? user!.email,
       phone: myProfile?['phone_number'],
     );
