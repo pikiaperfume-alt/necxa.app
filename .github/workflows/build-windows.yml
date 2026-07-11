@@ -128,7 +128,7 @@ jobs:
       run: flutter build windows --release
 
     - name: Setup Inno Setup
-      uses: ammaraskar/setup-inno-setup@v1.0.0
+      uses: Miniong/setup-inno-setup@v1
 
     - name: Build Windows Installer
       # This command runs the Inno Setup compiler on the script we just created.
