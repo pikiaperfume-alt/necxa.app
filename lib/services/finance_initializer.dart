@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:necxa_flutter/firebase_options.dart'; // Assuming you have this from `flutterfire configure`
 
 /// A singleton service to lazily initialize the financial backends (Firebase & Supabase).
@@ -12,9 +12,8 @@ class FinanceInitializer {
 
   bool _isInitialized = false;
 
-  /// Ensures that Firebase and Supabase are initialized.
-  /// This method is safe to call multiple times; it will only run the
-  /// initialization logic once.
+  /// Ensures that Firebase is initialized and that the app is signed in
+  /// with Firebase Authentication. This is required for callable functions.
   Future<void> ensureInitialized() async {
     if (_isInitialized) {
       return;
@@ -22,14 +21,19 @@ class FinanceInitializer {
 
     debugPrint("🚀 Lazily initializing Necxa Finance Engine...");
 
-    // Initialize Supabase - Move your keys from main.dart here
-    await Supabase.initialize(
-      url: 'YOUR_SUPABASE_URL', // Add your Supabase URL
-      anonKey: 'YOUR_SUPABASE_ANON_KEY', // Add your Supabase Anon Key
-    );
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    }
 
-    // Initialize Firebase
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    if (FirebaseAuth.instance.currentUser == null) {
+      try {
+        final credential = await FirebaseAuth.instance.signInAnonymously();
+        debugPrint('🔥 Firebase anonymous sign-in successful: ${credential.user?.uid}');
+      } catch (e) {
+        debugPrint('🔥 Firebase anonymous sign-in failed: $e');
+        rethrow;
+      }
+    }
 
     _isInitialized = true;
     debugPrint("✅ Necxa Finance Engine is active.");

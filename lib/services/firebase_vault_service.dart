@@ -1,10 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:necxa_flutter/firebase_options.dart';
 
 class FirebaseVaultService {
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   FirebaseFunctions get _functions => FirebaseFunctions.instance;
+
+  Future<void> _ensureFirebaseAuth() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    }
+
+    if (FirebaseAuth.instance.currentUser == null) {
+      await FirebaseAuth.instance.signInAnonymously();
+    }
+  }
 
   /// Fetches available coin packs from Firestore
   Future<List<Map<String, dynamic>>> fetchCoinPacks() async {
@@ -34,6 +47,7 @@ class FirebaseVaultService {
     required Map<String, dynamic> securityMetadata,
   }) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('buyCoins');
       final result = await callable.call({
         'packId': packId,
@@ -58,6 +72,7 @@ class FirebaseVaultService {
     required int quantity,
   }) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('processShopPurchase');
       final result = await callable.call({
         'orderId': orderId,
@@ -112,6 +127,7 @@ class FirebaseVaultService {
     String? phone,
   }) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('initiatePesapalPayment');
       final result = await callable.call({
         'amount': amount,
@@ -142,6 +158,7 @@ class FirebaseVaultService {
     required Map<String, dynamic> securityMetadata,
   }) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('withdrawFiat');
       final result = await callable.call({
         'amount': amount,
@@ -161,6 +178,7 @@ class FirebaseVaultService {
 
   Future<Map<String, dynamic>> request2FASetup() async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('request2FASetup');
       final result = await callable.call();
       return Map<String, dynamic>.from(result.data);
@@ -179,6 +197,7 @@ class FirebaseVaultService {
     required String contextType, // 'transport', 'marketplace'
   }) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('holdInEscrow');
       final result = await callable.call({
         'userId': userId,
@@ -200,6 +219,7 @@ class FirebaseVaultService {
     required double amount,
   }) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('releaseEscrow');
       final result = await callable.call({
         'transactionId': transactionId,
@@ -215,6 +235,7 @@ class FirebaseVaultService {
 
   Future<Map<String, dynamic>> confirm2FASetup(String token) async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('confirm2FASetup');
       final result = await callable.call({'token': token});
       return Map<String, dynamic>.from(result.data);
@@ -225,6 +246,7 @@ class FirebaseVaultService {
 
   Future<Map<String, dynamic>> sendWithdrawalOTP() async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('sendWithdrawalOTP');
       final result = await callable.call();
       return Map<String, dynamic>.from(result.data);
@@ -235,6 +257,7 @@ class FirebaseVaultService {
 
   Future<Map<String, dynamic>> refreshForexRates() async {
     try {
+      await _ensureFirebaseAuth();
       final HttpsCallable callable = _functions.httpsCallable('refreshForexRates');
       final result = await callable.call();
       return Map<String, dynamic>.from(result.data);

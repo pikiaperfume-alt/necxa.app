@@ -83,4 +83,3 @@ export function toLightweight(message: any) {
       : message.content
   }
 }
-

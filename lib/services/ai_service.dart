@@ -82,7 +82,6 @@ class NecxaAI {
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
         headers['x-primary-jwt'] = session.accessToken;
-        headers['Authorization'] = 'Bearer ${session.accessToken}';
       }
     } catch (_) {}
     return headers;

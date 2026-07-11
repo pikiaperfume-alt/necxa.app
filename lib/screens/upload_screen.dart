@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,18 +10,14 @@ import 'pro_media_editor_screen.dart';
 import 'responsive_media_editor.dart';
 import '../widgets/campaign_ui_kit.dart';
 import '../utils/content_sanitizer.dart';
-import '../services/music_library_service.dart';
-import 'policies_screen.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'necxa_camera_capture_screen.dart';
 import '../main.dart' show cameras;
 import '../app_state.dart';
 import '../models/music_models.dart';
-import '../services/draft_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/media_compression_service.dart';
-import '../data.dart';
 import '../utils/error_handler.dart';
 
 // ══════════════════════════════════════════════════════════════
@@ -100,9 +95,6 @@ class _UploadScreenState extends State<UploadScreen>
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
   File? _audioFile;
-  String? _audioPath;
-  bool _isPlaying = false;
-  final Duration _recDuration = Duration.zero;
   Timer? _recTimer;
 
   // -- Artist Hub --
@@ -133,7 +125,6 @@ class _UploadScreenState extends State<UploadScreen>
   Map<String, dynamic>? _linkedListing;
 
   // ── Sync State ──────────────────────────────────────────────
-  final bool _isProcessing = false;
   bool _isOptimizing = false;
   String _optimizingStatus = "";
   bool _agreedToPolicies = false;
@@ -264,29 +255,6 @@ class _UploadScreenState extends State<UploadScreen>
        });
        _processResult(XFile(_multiFiles.first.path), true);
      }
-  }
-
-  Future<void> _pickImage() async {
-    final f = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70);
-    await _processResult(f, false);
-  }
-
-  // ── Audio recording ───────────────────────────────────────────
-  Future<void> _togglePlay() async {
-    if (_audioPath == null) return;
-    if (_isPlaying) {
-      await _player.pause();
-      setState(() => _isPlaying = false);
-    } else {
-      await _player.setFilePath(_audioPath!);
-      await _player.play();
-      setState(() => _isPlaying = true);
-      _player.playerStateStream.listen((s) {
-        if (s.processingState == ProcessingState.completed) {
-          if (mounted) setState(() => _isPlaying = false);
-        }
-      });
-    }
   }
 
   // ── Step navigation ────────────────────────────────────────────
@@ -452,7 +420,6 @@ class _UploadScreenState extends State<UploadScreen>
 
   Future<void> _dispatchSalesCampaign() async {
     final media = await _optimizeMediaAssets();
-    final multiUrls = media['multiUrls'] as List<String>;
     final mediaType = media['mediaType'] as String?;
     
     // 🛡️ Pre-calculate product photo URLs (Miniatures)
@@ -1225,38 +1192,5 @@ class _UploadScreenState extends State<UploadScreen>
         ],
       ),
     );
-  }
-  Future<void> _resumeDraft(DraftPost d) async {
-    final file = File(d.mediaPath);
-    if (!await file.exists()) {
-       _err("Draft file missing from storage");
-       return;
-    }
-
-    MusicTrack? track;
-    if (d.trackId != null) {
-      track = await widget.state.music.getTrackById(d.trackId!);
-    }
-
-    if (mounted) {
-      final res = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ResponsiveMediaEditor(
-            state: widget.state,
-            initialVideo: file,
-            initialTrack: track,
-          ),
-        ),
-      );
-
-      if (res != null && res is Map) {
-        setState(() {
-          _visualFile = res['file'];
-          _bakedTrack = res['track'];
-          _step = 1;
-        });
-      }
-    }
   }
 }

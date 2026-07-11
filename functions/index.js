@@ -187,7 +187,7 @@ async function recordLedgerEntry(userId, { type, amount, currency, direction, me
       }, {
         headers: {
           'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
+          'Authorization': `Bearer ${supabaseKey}`
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal'
         }
@@ -1378,10 +1378,10 @@ async function getOrRegisterIPN(token) {
     url: ipnUrl,
     ipn_notification_type: "POST"
   }, {
-    headers: { 
-      'Authorization': `Bearer ${token}`,
+    headers: {
+      'Authorization': `Bearer ${token}`
       'Content-Type': 'application/json',
-      'Accept': 'application/json' 
+      'Accept': 'application/json'
     }
   });
 
@@ -1437,7 +1437,7 @@ exports.initiatePesapalPayment = require("firebase-functions/v1").runWith(pesapa
 
     const response = await axios.post(`${PESAPAL_BASE_URL}/api/Transactions/SubmitOrderRequest`, orderData, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       }
@@ -1495,7 +1495,7 @@ exports.pesapalWebhook = require("firebase-functions/v1").runWith(pesapalConfig)
     // Check status with Pesapal
     const statusRes = await axios.get(`${PESAPAL_BASE_URL}/api/Transactions/GetTransactionStatus?orderTrackingId=${orderTrackingId}`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`
         'Accept': 'application/json'
       }
     });
@@ -1704,7 +1704,7 @@ async function disburseViaPesapal(token, { amount, accountNumber, recipientName,
 
   const response = await axios.post(DISBURSEMENT_URL, payload, {
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${token}`
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     }
@@ -1776,3 +1776,5 @@ exports.processDisbursement = require("firebase-functions/v1").runWith(pesapalCo
     throw new functions.https.HttpsError("internal", `Failed to disburse funds via Pesapal: ${error.message}`);
   }
 });
+
+
