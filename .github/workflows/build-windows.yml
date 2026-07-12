@@ -72,12 +72,12 @@ jobs:
 
         # 3. Helper function to extract SDK url variables from DownloadSDK.cmake
         function Get-SdkInfo($varName, $content) {
-            $pattern = "set\s*\(\s*${varName}\s*\"([^\"]+)\"\s*\)"
-            $match = [regex]::Match($content, $pattern)
-            if ($match.Success) {
-                $url = $match.Groups[1].Value
-                $fileName = $url.Split('/')[-1]
-                return @{ Url = $url; FileName = $fileName }
+            foreach ($line in $content -split "`r?`n") {
+                if ($line -match "^\s*set\s*\(\s*$([regex]::Escape($varName))\s*\"([^\"]+)\"\s*\)") {
+                    $url = $Matches[1]
+                    $fileName = $url.Split('/')[-1]
+                    return @{ Url = $url; FileName = $fileName }
+                }
             }
             return $null
         }
