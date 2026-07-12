@@ -1,17 +1,17 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:necxa_flutter/main.dart';
+import 'package:necxa_flutter/utils/error_handler.dart';
 
 void main() {
   testWidgets('NecxaApp builds without crashing', (WidgetTester tester) async {
     await tester.pumpWidget(const NecxaApp());
     expect(find.byType(NecxaApp), findsOneWidget);
     await tester.pumpAndSettle();
+  });
+
+  test('live stream errors are translated into clear messages', () {
+    expect(getUserFriendlyError('Permission denied'), contains('Camera or microphone access'));
+    expect(getUserFriendlyError('token expired'), contains('Live streaming authentication failed'));
+    expect(getUserFriendlyError('joinChannel failed'), contains('Unable to connect to the live channel'));
   });
 }

@@ -37,7 +37,23 @@ String getUserFriendlyError(dynamic error) {
     if (error.code == 'NotAvailable') {
       return "This feature is not available on your device.";
     }
+    if (errorStr.contains('camera') || errorStr.contains('microphone')) {
+      return "Camera or microphone access was denied. Please allow permissions and try again.";
+    }
     return "A device error occurred. Please try again.";
+  }
+
+  // Live streaming / Agora-specific failures
+  if (errorStr.contains('permission') || errorStr.contains('denied')) {
+    return "Camera or microphone access was denied. Please allow permissions and try again.";
+  }
+
+  if (errorStr.contains('token') || errorStr.contains('authentication failed') || errorStr.contains('identity verification required')) {
+    return "Live streaming authentication failed. Please try again in a moment.";
+  }
+
+  if (errorStr.contains('channel') || errorStr.contains('joinchannel') || errorStr.contains('join channel')) {
+    return "Unable to connect to the live channel. Please try again.";
   }
 
   // Fallback Catch-All
