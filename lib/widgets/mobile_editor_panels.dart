@@ -260,10 +260,22 @@ class _TextEditingPanelState extends State<TextEditingPanel> {
 // ────────────────────────────────────────────────────────────
 class AudioEditingPanel extends StatefulWidget {
   final VoidCallback onClose;
+  final Function(double) onVolumeChanged;
+  final Function(double) onSpeedChanged;
+  final Function(double) onBassChanged;
+  final Function(double) onTrebleChanged;
+  final Function(bool) onFadeInChanged;
+  final Function(bool) onFadeOutChanged;
   
   const AudioEditingPanel({
     super.key,
     required this.onClose,
+    required this.onVolumeChanged,
+    required this.onSpeedChanged,
+    required this.onBassChanged,
+    required this.onTrebleChanged,
+    required this.onFadeInChanged,
+    required this.onFadeOutChanged,
   });
   
   @override
@@ -301,21 +313,25 @@ class _AudioEditingPanelState extends State<AudioEditingPanel> {
           // Volume
           _buildAudioSlider('🔊 Volume', _volume, 0, 2, (value) {
             setState(() => _volume = value);
+            widget.onVolumeChanged(value);
           }),
           
           // Speed
           _buildAudioSlider('⚡ Speed', _speed, 0.5, 2, (value) {
             setState(() => _speed = value);
+            widget.onSpeedChanged(value);
           }),
           
           // Bass
           _buildAudioSlider('🔉 Bass', _bass, 0, 1, (value) {
             setState(() => _bass = value);
+            widget.onBassChanged(value);
           }),
           
           // Treble
           _buildAudioSlider('🔈 Treble', _treble, 0, 1, (value) {
             setState(() => _treble = value);
+            widget.onTrebleChanged(value);
           }),
           
           const SizedBox(height: 12),
@@ -326,12 +342,14 @@ class _AudioEditingPanelState extends State<AudioEditingPanel> {
               Expanded(
                 child: _buildToggleButton('Fade In', _fadeIn, (value) {
                   setState(() => _fadeIn = value);
+                  widget.onFadeInChanged(value);
                 }),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _buildToggleButton('Fade Out', _fadeOut, (value) {
                   setState(() => _fadeOut = value);
+                  widget.onFadeOutChanged(value);
                 }),
               ),
             ],
@@ -416,10 +434,14 @@ class _AudioEditingPanelState extends State<AudioEditingPanel> {
 // ────────────────────────────────────────────────────────────
 class EffectsPanel extends StatefulWidget {
   final VoidCallback onClose;
+  final Function(String) onEffectSelected;
+  final String? activeEffect;
   
   const EffectsPanel({
     super.key,
     required this.onClose,
+    required this.onEffectSelected,
+    this.activeEffect,
   });
   
   @override
@@ -467,20 +489,21 @@ class _EffectsPanelState extends State<EffectsPanel> {
             physics: const NeverScrollableScrollPhysics(),
             itemBuilder: (context, index) {
               final effect = effects[index];
+              final selectedEffect = widget.activeEffect == effect.$1;
               return Material(
-                color: C.surface,
+                color: selectedEffect ? C.brand : C.surface,
                 borderRadius: BorderRadius.circular(8),
                 child: InkWell(
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Applied ${effect.$1}')),
-                  ),
+                  onTap: () {
+                    widget.onEffectSelected(effect.$1);
+                  },
                   borderRadius: BorderRadius.circular(8),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(effect.$2, style: const TextStyle(fontSize: 28)),
                       const SizedBox(height: 4),
-                      Text(effect.$1, style: dm(sz: 10, w: FontWeight.w600)),
+                      Text(effect.$1, style: dm(sz: 10, w: FontWeight.w600, c: selectedEffect ? Colors.black : C.text)),
                     ],
                   ),
                 ),

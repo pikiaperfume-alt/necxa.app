@@ -2672,7 +2672,177 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   }
 
   void _showFrameOverlayPicker() {
-    _feedback("Frame picker not implemented yet.");
+    final ratios = ['9:16', '1:1', '4:5', '16:9'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: C.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Frame picker', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white, ls: 2)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: ratios.map((ratio) {
+                final selected = _selectedAspectRatio == ratio;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _selectedAspectRatio = ratio);
+                    Navigator.pop(context);
+                    _feedback('$ratio frame applied');
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: selected ? C.brand : Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: selected ? C.brand : Colors.white12),
+                    ),
+                    child: Text(ratio, style: syne(sz: 11, w: FontWeight.w900, c: selected ? Colors.black : Colors.white70)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCaptionSheet() {
+    var captionText = '';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 16, left: 16, right: 16, top: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: C.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white10),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Add caption', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white)),
+              const SizedBox(height: 12),
+              TextField(
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Type your caption',
+                  hintStyle: dm(c: Colors.white38),
+                  filled: true,
+                  fillColor: Colors.white10,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+                style: dm(c: Colors.white),
+                onChanged: (value) => captionText = value,
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: C.brand),
+                  onPressed: () {
+                    if (captionText.trim().isEmpty) {
+                      _showSnack('Enter caption text first');
+                      return;
+                    }
+                    final track = _tracks.firstWhere((track) => track.type == TrackType.text, orElse: () {
+                      final newTrack = EditorTrack(id: 'text-${_tracks.length + 1}', name: 'Text', type: TrackType.text);
+                      _tracks.add(newTrack);
+                      return newTrack;
+                    });
+                    final captionClip = EditorObject(
+                      id: 'caption-${DateTime.now().millisecondsSinceEpoch}',
+                      name: captionText.trim(),
+                      type: 'text',
+                      startTime: Duration.zero,
+                      duration: const Duration(seconds: 4),
+                    );
+                    setState(() {
+                      track.clips.add(captionClip);
+                      _selectedTrackId = track.id;
+                      _selectedTrackIndex = _tracks.indexOf(track);
+                      _selectedObject = captionClip;
+                      _totalDuration = _calculateTimelineDuration();
+                    });
+                    Navigator.pop(context);
+                    _showSnack('Caption added');
+                  },
+                  child: Text('Add caption', style: syne(sz: 12, w: FontWeight.w700, c: Colors.black)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTransitionSheet() {
+    final options = ['Fade', 'Slide', 'Zoom', 'Rotate', 'Wipe', 'Blur', 'Bounce', 'Flip'];
+    if (_sequence.isEmpty) {
+      _feedback('Add a clip before choosing a transition.');
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: C.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Choose a transition', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: options.map((option) {
+                final current = _transitions[_activeClipIndex] == option;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _transitions[_activeClipIndex] = option);
+                    Navigator.pop(context);
+                    _feedback('$option transition applied');
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: current ? C.brand : Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: current ? C.brand : Colors.white12),
+                    ),
+                    child: Text(option, style: syne(sz: 11, w: FontWeight.w700, c: current ? Colors.black : Colors.white70)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _toggleVoiceOver() async {
@@ -2701,14 +2871,134 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
   }
 
   void _showCaptionSheet() {
-    _feedback("Auto-captioning not implemented yet.");
+    var captionText = '';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 16, left: 16, right: 16, top: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: C.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white10),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Auto-caption', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white)),
+              const SizedBox(height: 12),
+              TextField(
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Enter caption text...',
+                  hintStyle: dm(c: Colors.white38),
+                  filled: true,
+                  fillColor: Colors.white10,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+                style: dm(c: Colors.white),
+                onChanged: (value) => captionText = value,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: C.brand),
+                      onPressed: () {
+                        if (captionText.trim().isEmpty) {
+                          _feedback('Enter caption text first.');
+                          return;
+                        }
+                        setState(() {
+                          _saveHistory();
+                          _overlays.add({
+                            'type': 'text',
+                            'text': captionText.trim(),
+                            'start': 0.0,
+                            'end': 1.0,
+                            'x': 0.5,
+                            'y': 0.5,
+                            'scale': 1.0,
+                            'rotation': 0.0,
+                            'opacity': 1.0,
+                            'fontSize': 28.0,
+                            'color': Colors.white,
+                            'background': Colors.black,
+                            'backgroundOpacity': 0.0,
+                            'shadow': true,
+                          });
+                        });
+                        Navigator.pop(context);
+                        _feedback('Caption added');
+                      },
+                      child: Text('Add caption', style: syne(w: FontWeight.w700, c: Colors.black)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showTransitionSheet() {
     // In a real app, this status would be fetched from the user's profile.
     if (_transitionsUnlocked) {
-      // TODO: Implement the actual UI for selecting a transition.
-      _feedback("Transitions Unlocked! Picker UI coming soon.");
+      final options = ['Fade', 'Slide', 'Zoom', 'Rotate', 'Wipe', 'Blur', 'Bounce', 'Flip'];
+      if (_sequence.isEmpty) {
+        _feedback('Add clips before applying a transition.');
+        return;
+      }
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (_) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: C.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Choose transition', style: syne(sz: 14, w: FontWeight.w900, c: Colors.white)),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: options.map((option) {
+                  final current = _transitions[_activeClipIndex] == option;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() => _transitions[_activeClipIndex] = option);
+                      Navigator.pop(context);
+                      _feedback('$option transition applied');
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: current ? C.brand : Colors.white10,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: current ? C.brand : Colors.white12),
+                      ),
+                      child: Text(option, style: syne(sz: 11, w: FontWeight.w700, c: current ? Colors.black : Colors.white70)),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      );
       return;
     }
 
@@ -2752,6 +3042,7 @@ final ImageEnhancementService _enhancementService = ImageEnhancementService();
         ],
       ),
     );
+  }
   }
 
   Widget _actionRow(IconData icon, String label, VoidCallback onTap, {Color? c}) {
